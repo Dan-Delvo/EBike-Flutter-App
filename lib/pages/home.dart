@@ -13,15 +13,54 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   Duration timeLeft = Duration.zero;
   Timer? timer;
+  Timer? idleTimer;
   bool isCharging = false;
+  bool isIdle = true; // Start in idle mode
 
   static const double ratePeso = 5; // 5 pesos
   static const int rateMinutes = 10; // = 10 minutes
+  static const int idleTimeoutSeconds =
+      30; // Go idle after 30 seconds of inactivity
+
+  @override
+  void initState() {
+    super.initState();
+    startIdleTimer();
+  }
 
   @override
   void dispose() {
     timer?.cancel();
+    idleTimer?.cancel();
     super.dispose();
+  }
+
+  // Start idle timer
+  void startIdleTimer() {
+    idleTimer?.cancel();
+    idleTimer = Timer(const Duration(seconds: idleTimeoutSeconds), () {
+      if (!isCharging) {
+        setState(() {
+          isIdle = true;
+        });
+      }
+    });
+  }
+
+  // Reset idle timer when user interacts
+  void resetIdleTimer() {
+    setState(() {
+      isIdle = false;
+    });
+    startIdleTimer();
+  }
+
+  // Exit idle mode
+  void exitIdleMode() {
+    setState(() {
+      isIdle = false;
+    });
+    startIdleTimer();
   }
 
   // Convert credits to time
@@ -68,6 +107,7 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       isCharging = false;
       timeLeft = Duration.zero;
+      isIdle = true; // Go to idle mode after charging finishes
     });
   }
 
@@ -89,45 +129,85 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: buildAppbar(),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          // Determine if we should use column layout (mobile) or row layout (tablet/desktop)
-          final bool isWideScreen = constraints.maxWidth > 800;
-          final double padding = constraints.maxWidth > 600 ? 16 : 8;
+      body: GestureDetector(
+        onTap: isIdle ? exitIdleMode : resetIdleTimer,
+        child: Stack(
+          children: [
+            // Main content
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // Determine if we should use column layout (mobile) or row layout (tablet/desktop)
+                final bool isWideScreen = constraints.maxWidth > 800;
+                final double padding = constraints.maxWidth > 600 ? 16 : 8;
 
-          return SingleChildScrollView(
-            child: Padding(
-              padding: EdgeInsets.all(padding),
-              child: isWideScreen
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 1,
-                          child: Column(
+                return SingleChildScrollView(
+                  child: Padding(
+                    padding: EdgeInsets.all(padding),
+                    child: isWideScreen
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 1,
+                                child: Column(
+                                  children: [
+                                    creditAvailable(),
+                                    SizedBox(height: padding),
+                                    paymentMethod(),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(width: padding),
+                              Expanded(flex: 1, child: timeRemaining()),
+                            ],
+                          )
+                        : Column(
                             children: [
                               creditAvailable(),
+                              SizedBox(height: padding),
+                              timeRemaining(),
                               SizedBox(height: padding),
                               paymentMethod(),
                             ],
                           ),
-                        ),
-                        SizedBox(width: padding),
-                        Expanded(flex: 1, child: timeRemaining()),
-                      ],
-                    )
-                  : Column(
-                      children: [
-                        creditAvailable(),
-                        SizedBox(height: padding),
-                        timeRemaining(),
-                        SizedBox(height: padding),
-                        paymentMethod(),
-                      ],
-                    ),
+                  ),
+                );
+              },
             ),
-          );
-        },
+            // Idle screen overlay
+            if (isIdle) idleScreen(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Idle screen overlay
+  Widget idleScreen() {
+    return Container(
+      color: Colors.black87,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.touch_app, size: 100, color: Colors.white),
+            const SizedBox(height: 30),
+            const Text(
+              "Press the screen to start",
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              "E-Bike Charging Station",
+              style: TextStyle(fontSize: 20, color: Colors.white70),
+            ),
+          ],
+        ),
       ),
     );
   }

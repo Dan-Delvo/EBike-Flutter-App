@@ -36,10 +36,21 @@ dependencies:
   cupertino_icons: ^1.0.8
   provider: ^6.1.5+1
   flutter_blue_plus: ^1.32.12
+  wakelock_plus: ^1.2.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: true
+  image_path: "assets/icon/app_icon.png"
+
+  # Optional: different icons for different platforms
+  # image_path_android: "assets/icon/android_icon.png"
+  # image_path_ios: "assets/icon/ios_icon.png"
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -74,6 +85,10 @@ flutter:
   # "family" key with the font family name, and a "fonts" key with a
   # list giving the asset and other descriptors for the font. For
   # example:
+
+assets:
+  - assets/icon/applogo.png
+
 fonts:
   - family: Poppins
     fonts:
