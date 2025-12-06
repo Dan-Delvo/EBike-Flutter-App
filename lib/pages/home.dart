@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:my_app/controllers/credits_controller.dart';
+import 'package:my_app/controllers/bluetooth_controller.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -120,8 +121,14 @@ class _HomePageState extends State<HomePage> {
 
   // Format duration nicely
   String formatDuration(Duration d) {
+    String h = d.inHours.toString().padLeft(2, "0");
     String m = d.inMinutes.remainder(60).toString().padLeft(2, "0");
     String s = d.inSeconds.remainder(60).toString().padLeft(2, "0");
+
+    // Only show hours if duration is 1 hour or more
+    if (d.inHours > 0) {
+      return "$h:$m:$s";
+    }
     return "$m:$s";
   }
 
@@ -140,38 +147,39 @@ class _HomePageState extends State<HomePage> {
                 final bool isWideScreen = constraints.maxWidth > 800;
                 final double padding = constraints.maxWidth > 600 ? 16 : 8;
 
-                return SingleChildScrollView(
-                  child: Padding(
-                    padding: EdgeInsets.all(padding),
-                    child: isWideScreen
-                        ? Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                flex: 1,
-                                child: Column(
-                                  children: [
-                                    creditAvailable(),
-                                    SizedBox(height: padding),
-                                    paymentMethod(),
-                                  ],
-                                ),
+                return isWideScreen
+                    ? Padding(
+                        padding: EdgeInsets.all(padding),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              flex: 1,
+                              child: Column(
+                                children: [
+                                  Expanded(flex: 3, child: creditAvailable()),
+                                  SizedBox(height: padding),
+                                  Expanded(flex: 4, child: paymentMethod()),
+                                ],
                               ),
-                              SizedBox(width: padding),
-                              Expanded(flex: 1, child: timeRemaining()),
-                            ],
-                          )
-                        : Column(
-                            children: [
-                              creditAvailable(),
-                              SizedBox(height: padding),
-                              timeRemaining(),
-                              SizedBox(height: padding),
-                              paymentMethod(),
-                            ],
-                          ),
-                  ),
-                );
+                            ),
+                            SizedBox(width: padding),
+                            Expanded(flex: 1, child: timeRemaining()),
+                          ],
+                        ),
+                      )
+                    : Padding(
+                        padding: EdgeInsets.all(padding),
+                        child: Column(
+                          children: [
+                            Expanded(flex: 2, child: creditAvailable()),
+                            SizedBox(height: padding),
+                            Expanded(flex: 3, child: timeRemaining()),
+                            SizedBox(height: padding),
+                            Expanded(flex: 3, child: paymentMethod()),
+                          ],
+                        ),
+                      );
               },
             ),
             // Idle screen overlay
@@ -185,26 +193,62 @@ class _HomePageState extends State<HomePage> {
   // Idle screen overlay
   Widget idleScreen() {
     return Container(
-      color: Colors.black87,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.blue.shade900,
+            Colors.blue.shade700,
+            Colors.cyan.shade600,
+          ],
+        ),
+      ),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.touch_app, size: 100, color: Colors.white),
-            const SizedBox(height: 30),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.white.withOpacity(0.3),
+                    blurRadius: 20,
+                    spreadRadius: 5,
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.touch_app, size: 80, color: Colors.white),
+            ),
+            const SizedBox(height: 40),
             const Text(
-              "Press the screen to start",
+              "Touch to Start",
               style: TextStyle(
-                fontSize: 32,
+                fontSize: 42,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
+                letterSpacing: 1.2,
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 20),
-            const Text(
-              "E-Bike Charging Station",
-              style: TextStyle(fontSize: 20, color: Colors.white70),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text(
+                "E-Bike Charging Station",
+                style: TextStyle(
+                  fontSize: 20,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ),
           ],
         ),
@@ -228,12 +272,38 @@ class _HomePageState extends State<HomePage> {
         final double buttonPaddingV = constraints.maxWidth > 400 ? 20 : 12;
 
         return Card(
-          child: Padding(
+          elevation: 8,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            width: double.infinity,
+            height: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Colors.white, Colors.blue.shade50],
+              ),
+              borderRadius: BorderRadius.circular(20),
+            ),
             padding: EdgeInsets.all(cardPadding),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.max,
               children: [
-                Icon(Icons.access_time, size: iconSize),
+                Container(
+                  padding: EdgeInsets.all(iconSize * 0.2),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.access_time,
+                    size: iconSize * 0.6,
+                    color: Colors.blue.shade700,
+                  ),
+                ),
                 const SizedBox(height: 20),
                 FittedBox(
                   fit: BoxFit.scaleDown,
@@ -242,30 +312,74 @@ class _HomePageState extends State<HomePage> {
                     style: TextStyle(
                       fontSize: timeSize,
                       fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade900,
+                      letterSpacing: 2,
                     ),
                   ),
                 ),
                 const SizedBox(height: 10),
-                Text("Time Left", style: TextStyle(fontSize: labelSize)),
+                Text(
+                  "Time Remaining",
+                  style: TextStyle(
+                    fontSize: labelSize,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
                 const SizedBox(height: 40),
                 Wrap(
                   alignment: WrapAlignment.center,
                   spacing: 10,
                   children: [
-                    ElevatedButton(
-                      onPressed: isCharging ? null : startCharging,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color.fromARGB(221, 252, 0, 0),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: buttonPaddingH,
-                          vertical: buttonPaddingV,
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: isCharging
+                              ? [Colors.grey, Colors.grey.shade400]
+                              : [Colors.green.shade600, Colors.green.shade400],
                         ),
+                        borderRadius: BorderRadius.circular(30),
+                        boxShadow: isCharging
+                            ? []
+                            : [
+                                BoxShadow(
+                                  color: Colors.green.withOpacity(0.4),
+                                  blurRadius: 15,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
                       ),
-                      child: Text(
-                        "Start",
-                        style: TextStyle(
-                          fontSize: buttonTextSize,
-                          color: Colors.white,
+                      child: ElevatedButton(
+                        onPressed: isCharging ? null : startCharging,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: buttonPaddingH,
+                            vertical: buttonPaddingV,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.play_arrow,
+                              color: Colors.white,
+                              size: buttonTextSize,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              "Start Charging",
+                              style: TextStyle(
+                                fontSize: buttonTextSize,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -296,24 +410,66 @@ class _HomePageState extends State<HomePage> {
             : 36;
 
         return Card(
+          elevation: 8,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: Container(
             width: double.infinity,
+            height: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Colors.green.shade600, Colors.green.shade400],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.green.withOpacity(0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
             padding: EdgeInsets.all(cardPadding),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.max,
               children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Credits Available",
-                    style: TextStyle(
-                      fontSize: titleSize,
-                      fontWeight: FontWeight.bold,
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.account_balance_wallet,
+                        color: Colors.white,
+                        size: 24,
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          "Credits Available",
+                          style: TextStyle(
+                            fontSize: titleSize,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
@@ -322,6 +478,8 @@ class _HomePageState extends State<HomePage> {
                     style: TextStyle(
                       fontSize: creditSize,
                       fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 1.5,
                     ),
                   ),
                 ),
@@ -344,33 +502,78 @@ class _HomePageState extends State<HomePage> {
             : 20;
 
         return Card(
+          elevation: 8,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: Container(
             width: double.infinity,
+            height: double.infinity,
             padding: EdgeInsets.all(cardPadding),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.max,
               children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Payment Methods",
-                    style: TextStyle(
-                      fontSize: titleSize,
-                      fontWeight: FontWeight.bold,
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade100,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.payment,
+                        color: Colors.blue.shade700,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          "Payment Methods",
+                          style: TextStyle(
+                            fontSize: titleSize,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade900,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Expanded(
+                  child: Center(
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceEvenly,
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: [
+                        methodBox(
+                          "Coins",
+                          Icons.monetization_on,
+                          constraints.maxWidth,
+                          Colors.amber,
+                        ),
+                        methodBox(
+                          "Bills",
+                          Icons.attach_money,
+                          constraints.maxWidth,
+                          Colors.green,
+                        ),
+                        methodBox(
+                          "QR Code",
+                          Icons.qr_code_scanner,
+                          constraints.maxWidth,
+                          Colors.blue,
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Wrap(
-                  alignment: WrapAlignment.spaceEvenly,
-                  spacing: 16,
-                  runSpacing: 16,
-                  children: [
-                    methodBox("Coins", "Coins", constraints.maxWidth),
-                    methodBox("Bills", "Bills", constraints.maxWidth),
-                    methodBox("QR Code", "QR", constraints.maxWidth),
-                  ],
                 ),
               ],
             ),
@@ -380,17 +583,27 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget methodBox(String title, String icon, double parentWidth) {
+  Widget methodBox(
+    String title,
+    IconData icon,
+    double parentWidth,
+    MaterialColor color,
+  ) {
     final double boxSize = parentWidth > 600
         ? 100
         : parentWidth > 400
         ? 80
         : 70;
     final double fontSize = parentWidth > 600
-        ? 22
-        : parentWidth > 400
         ? 18
+        : parentWidth > 400
+        ? 16
         : 14;
+    final double iconSize = parentWidth > 600
+        ? 48
+        : parentWidth > 400
+        ? 40
+        : 32;
 
     return Column(
       children: [
@@ -398,21 +611,33 @@ class _HomePageState extends State<HomePage> {
           width: boxSize,
           height: boxSize,
           decoration: BoxDecoration(
-            border: Border.all(width: 2),
-            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [color.shade300, color.shade500],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Center(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(icon),
-              ),
-            ),
+            child: Icon(icon, size: iconSize, color: Colors.white),
           ),
         ),
-        const SizedBox(height: 10),
-        Text(title, style: TextStyle(fontSize: fontSize)),
+        const SizedBox(height: 12),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade700,
+          ),
+        ),
       ],
     );
   }
@@ -427,41 +652,64 @@ class _HomePageState extends State<HomePage> {
           },
         ),
       ),
-      title: LayoutBuilder(
-        builder: (context, constraints) {
-          final double fontSize = constraints.maxWidth > 500
-              ? 18
-              : constraints.maxWidth > 300
-              ? 14
-              : 12;
+      title: Consumer<BluetoothController>(
+        builder: (context, bluetoothController, child) {
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final double fontSize = constraints.maxWidth > 500
+                  ? 18
+                  : constraints.maxWidth > 300
+                  ? 14
+                  : 12;
 
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'E-Bike Charging Station',
-                    style: TextStyle(
-                      fontSize: fontSize,
-                      fontWeight: FontWeight.bold,
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'E-Bike Charging Station',
+                        style: TextStyle(
+                          fontSize: fontSize,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  'Status: OK',
-                  style: TextStyle(
-                    fontSize: fontSize,
-                    fontWeight: FontWeight.bold,
+                  const SizedBox(width: 8),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      children: [
+                        Icon(
+                          bluetoothController.isConnected
+                              ? Icons.bluetooth_connected
+                              : Icons.bluetooth_disabled,
+                          size: fontSize,
+                          color: bluetoothController.isConnected
+                              ? Colors.white
+                              : Colors.red,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          bluetoothController.isConnected
+                              ? 'ESP32 Connected'
+                              : 'Disconnected',
+                          style: TextStyle(
+                            fontSize: fontSize,
+                            fontWeight: FontWeight.bold,
+                            color: bluetoothController.isConnected
+                                ? Colors.white
+                                : Colors.red,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           );
         },
       ),
