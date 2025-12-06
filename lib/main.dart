@@ -51,12 +51,28 @@ class _MyAppState extends State<MyApp> {
 
       // Set up data receiver callback
       bluetoothController.onDataReceived = (String msg) {
+        print('📩 Received message: "$msg"'); // Debug log
+
         if (msg.startsWith('COIN:')) {
-          double amount = double.tryParse(msg.split(':')[1]) ?? 0;
+          // Handle "COIN: 1" or "COIN:1" format
+          String valueStr = msg
+              .substring(5)
+              .trim(); // Remove "COIN:" and trim spaces
+          print('💰 Parsing COIN value: "$valueStr"'); // Debug log
+          double amount = double.tryParse(valueStr) ?? 0;
+          print('💰 Adding COIN amount: $amount'); // Debug log
           creditsController.addCredits(amount);
         } else if (msg.startsWith('BILL:')) {
-          double amount = double.tryParse(msg.split(':')[1]) ?? 0;
+          // Handle "BILL: 20" or "BILL:20" format
+          String valueStr = msg
+              .substring(5)
+              .trim(); // Remove "BILL:" and trim spaces
+          print('💵 Parsing BILL value: "$valueStr"'); // Debug log
+          double amount = double.tryParse(valueStr) ?? 0;
+          print('💵 Adding BILL amount: $amount'); // Debug log
           creditsController.addCredits(amount);
+        } else {
+          print('❓ Unknown message format: "$msg"'); // Debug log
         }
       };
 

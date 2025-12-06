@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:my_app/controllers/credits_controller.dart';
 import 'package:my_app/controllers/bluetooth_controller.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -17,6 +19,7 @@ class _HomePageState extends State<HomePage> {
   Timer? idleTimer;
   bool isCharging = false;
   bool isIdle = true; // Start in idle mode
+  String? userEmail; // Store user email for notifications
 
   static const double ratePeso = 5; // 5 pesos
   static const int rateMinutes = 10; // = 10 minutes
@@ -72,8 +75,8 @@ class _HomePageState extends State<HomePage> {
     return Duration(minutes: totalMinutes.toInt());
   }
 
-  // Start charging
-  void startCharging() {
+  // Show email dialog before starting charging
+  void startCharging() async {
     final creditsController = Provider.of<CreditsController>(
       context,
       listen: false,
@@ -84,11 +87,20 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    // Show email dialog
+    await showEmailDialog();
+
+    // Start charging process
     setState(() {
       timeLeft = creditsToTime(credits);
       isCharging = true;
     });
     creditsController.reset();
+
+    // Send start email if user provided email
+    if (userEmail != null && userEmail!.isNotEmpty) {
+      sendEmailNotification(userEmail!);
+    }
 
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (timeLeft.inSeconds > 0) {
@@ -105,10 +117,17 @@ class _HomePageState extends State<HomePage> {
   void stopCharging() {
     timer?.cancel();
     showMessage("Charging Finished! Please Unplug The Battery.");
+
+    // Send completion email if user provided email
+    if (userEmail != null && userEmail!.isNotEmpty) {
+      sendEmailNotification(userEmail!);
+    }
+
     setState(() {
       isCharging = false;
       timeLeft = Duration.zero;
       isIdle = true; // Go to idle mode after charging finishes
+      userEmail = null; // Clear email for next session
     });
   }
 
@@ -117,6 +136,132 @@ class _HomePageState extends State<HomePage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // Show email input dialog
+  Future<void> showEmailDialog() async {
+    final TextEditingController emailController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.email, color: Colors.blue.shade700, size: 24),
+              ),
+              const SizedBox(width: 12),
+              const Text('Email Notification'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter your email to receive notifications when charging is complete (optional)',
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  hintText: 'your@email.com',
+                  prefixIcon: const Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                userEmail = null;
+                Navigator.of(context).pop();
+              },
+              child: Text(
+                'Skip',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.blue.shade600, Colors.blue.shade400],
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ElevatedButton(
+                onPressed: () {
+                  String email = emailController.text.trim();
+                  if (email.isNotEmpty && !isValidEmail(email)) {
+                    showMessage('Please enter a valid email address');
+                    return;
+                  }
+                  userEmail = email.isNotEmpty ? email : null;
+                  Navigator.of(context).pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                ),
+                child: const Text(
+                  'Continue',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Validate email format
+  bool isValidEmail(String email) {
+    return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email);
+  }
+
+  // Send email notification via API
+  Future<void> sendEmailNotification(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse('http://192.168.56.1:8081/api/send-email'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'email': email}),
+      );
+
+      if (response.statusCode == 200) {
+        print('Email notification sent to $email');
+      } else {
+        print('Failed to send email: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error sending email notification: $e');
+    }
   }
 
   // Format duration nicely

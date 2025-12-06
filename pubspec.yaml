@@ -37,6 +37,7 @@ dependencies:
   provider: ^6.1.5+1
   flutter_blue_plus: ^1.32.12
   wakelock_plus: ^1.2.0
+  http: ^1.1.0
 
 dev_dependencies:
   flutter_test:
@@ -46,7 +47,8 @@ dev_dependencies:
 
 flutter_launcher_icons:
   android: true
-  image_path: "assets/icon/app_icon.png"
+  ios: true
+  image_path: "assets/icon/applogo.png"
 
   # Optional: different icons for different platforms
   # image_path_android: "assets/icon/android_icon.png"

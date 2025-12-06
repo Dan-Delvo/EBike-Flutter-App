@@ -37,13 +37,17 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
         );
 
         if (msg.startsWith('COIN:')) {
-          double amount = double.tryParse(msg.split(':')[1]) ?? 0;
+          // Handle "COIN: 1" or "COIN:1" format
+          String valueStr = msg.substring(5).trim();
+          double amount = double.tryParse(valueStr) ?? 0;
           creditsController.addCredits(amount);
           setState(() {
             coinAcceptorStatus = 'Last: ₱${amount.toStringAsFixed(0)}';
           });
         } else if (msg.startsWith('BILL:')) {
-          double amount = double.tryParse(msg.split(':')[1]) ?? 0;
+          // Handle "BILL: 20" or "BILL:20" format
+          String valueStr = msg.substring(5).trim();
+          double amount = double.tryParse(valueStr) ?? 0;
           creditsController.addCredits(amount);
           setState(() {
             billAcceptorStatus = 'Last: ₱${amount.toStringAsFixed(0)}';
@@ -130,13 +134,6 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Bluetooth Status: ${bluetoothController.status}',
-                      style: TextStyle(
-                        fontSize: constraints.maxWidth > 600 ? 16 : 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
                     SizedBox(height: spacing),
                     // Main content area - expands to fill screen
                     Expanded(
