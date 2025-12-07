@@ -27,28 +27,26 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
         listen: false,
       );
 
-      // Update callback to also update local status
+      // Save the original callback from main.dart
+      final originalCallback = bluetoothController.onDataReceived;
+
+      // Extend the callback to also update local diagnostics status
       bluetoothController.onDataReceived = (String msg) {
+        // Call the original callback first (to add credits)
+        originalCallback?.call(msg);
+
         if (!mounted) return;
 
-        final creditsController = Provider.of<CreditsController>(
-          context,
-          listen: false,
-        );
-
+        // Update local diagnostics status
         if (msg.startsWith('COIN:')) {
-          // Handle "COIN: 1" or "COIN:1" format
           String valueStr = msg.substring(5).trim();
           double amount = double.tryParse(valueStr) ?? 0;
-          creditsController.addCredits(amount);
           setState(() {
             coinAcceptorStatus = 'Last: ₱${amount.toStringAsFixed(0)}';
           });
         } else if (msg.startsWith('BILL:')) {
-          // Handle "BILL: 20" or "BILL:20" format
           String valueStr = msg.substring(5).trim();
           double amount = double.tryParse(valueStr) ?? 0;
-          creditsController.addCredits(amount);
           setState(() {
             billAcceptorStatus = 'Last: ₱${amount.toStringAsFixed(0)}';
           });
@@ -59,6 +57,43 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
         }
       };
     });
+  }
+
+  @override
+  void dispose() {
+    // Restore the original callback when leaving diagnostics page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final bluetoothController = Provider.of<BluetoothController>(
+        context,
+        listen: false,
+      );
+      final creditsController = Provider.of<CreditsController>(
+        context,
+        listen: false,
+      );
+
+      // Restore the main.dart callback
+      bluetoothController.onDataReceived = (String msg) {
+        print('📩 Received message: "$msg"');
+
+        if (msg.startsWith('COIN:')) {
+          String valueStr = msg.substring(5).trim();
+          print('💰 Parsing COIN value: "$valueStr"');
+          double amount = double.tryParse(valueStr) ?? 0;
+          print('💰 Adding COIN amount: $amount');
+          creditsController.addCredits(amount);
+        } else if (msg.startsWith('BILL:')) {
+          String valueStr = msg.substring(5).trim();
+          print('💵 Parsing BILL value: "$valueStr"');
+          double amount = double.tryParse(valueStr) ?? 0;
+          print('💵 Adding BILL amount: $amount');
+          creditsController.addCredits(amount);
+        } else {
+          print('❓ Unknown message format: "$msg"');
+        }
+      };
+    });
+    super.dispose();
   }
 
   void addCoinCredit() {
