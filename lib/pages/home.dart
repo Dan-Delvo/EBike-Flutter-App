@@ -99,7 +99,7 @@ class _HomePageState extends State<HomePage> {
 
     // Send start email if user provided email
     if (userEmail != null && userEmail!.isNotEmpty) {
-      sendEmailNotification(userEmail!);
+      sendEmailNotification(userEmail!, 'start');
     }
 
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -120,7 +120,7 @@ class _HomePageState extends State<HomePage> {
 
     // Send completion email if user provided email
     if (userEmail != null && userEmail!.isNotEmpty) {
-      sendEmailNotification(userEmail!);
+      sendEmailNotification(userEmail!, 'done');
     }
 
     setState(() {
@@ -246,12 +246,17 @@ class _HomePageState extends State<HomePage> {
   }
 
   // Send email notification via API
-  Future<void> sendEmailNotification(String email) async {
+  Future<void> sendEmailNotification(String email, String status) async {
     try {
       final response = await http.post(
-        Uri.parse('http://192.168.56.1:8081/api/send-email'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'email': email}),
+        Uri.parse(
+          'https://sandybrown-crane-809489.hostingersite.com/api/send-email',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: json.encode({'email': email, 'status': status}),
       );
 
       if (response.statusCode == 200) {
