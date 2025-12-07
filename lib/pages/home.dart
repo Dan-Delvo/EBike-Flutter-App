@@ -248,24 +248,45 @@ class _HomePageState extends State<HomePage> {
   // Send email notification via API
   Future<void> sendEmailNotification(String email, String status) async {
     try {
-      final response = await http.post(
-        Uri.parse(
-          'https://sandybrown-crane-809489.hostingersite.com/api/send-email',
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({'email': email, 'status': status}),
+      print('🔔 Attempting to send email notification...');
+      print('   Email: $email');
+      print('   Status: $status');
+      print(
+        '   URL: https://sandybrown-crane-809489.hostingersite.com/api/send-email',
       );
 
+      final response = await http
+          .post(
+            Uri.parse(
+              'https://sandybrown-crane-809489.hostingersite.com/api/send-email',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: json.encode({'email': email, 'status': status}),
+          )
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              print('❌ Email API request timed out after 10 seconds');
+              throw TimeoutException('Email API request timed out');
+            },
+          );
+
+      print('📧 Email API Response Status: ${response.statusCode}');
+      print('📧 Email API Response Body: ${response.body}');
+
       if (response.statusCode == 200) {
-        print('Email notification sent to $email');
+        print('✅ Email notification sent successfully to $email');
       } else {
-        print('Failed to send email: ${response.statusCode}');
+        print('❌ Failed to send email: ${response.statusCode}');
+        print('   Response: ${response.body}');
       }
     } catch (e) {
-      print('Error sending email notification: $e');
+      print('❌ Error sending email notification: $e');
+      print('   Error type: ${e.runtimeType}');
+      // Don't show error to user - email is optional feature
     }
   }
 
