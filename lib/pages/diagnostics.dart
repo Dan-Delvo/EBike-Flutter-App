@@ -54,6 +54,11 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
           setState(() {
             billAcceptorStatus = 'Rejected';
           });
+        } else if (msg.startsWith('RELAY:')) {
+          String status = msg.substring(6).trim();
+          setState(() {
+            relayStatus = status;
+          });
         }
       };
     });
@@ -193,6 +198,13 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                                           maxWidth: constraints.maxWidth,
                                         ),
                                         _StatusItem(
+                                          label: "Plug",
+                                          value: bluetoothController.isPlugged
+                                              ? 'Plugged'
+                                              : 'Unplugged',
+                                          maxWidth: constraints.maxWidth,
+                                        ),
+                                        _StatusItem(
                                           label: "Coin Acceptor",
                                           value: coinAcceptorStatus,
                                           maxWidth: constraints.maxWidth,
@@ -243,6 +255,13 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                                           value: bluetoothController.isConnected
                                               ? 'OK'
                                               : 'Disconnected',
+                                          maxWidth: constraints.maxWidth,
+                                        ),
+                                        _StatusItem(
+                                          label: "Plug",
+                                          value: bluetoothController.isPlugged
+                                              ? 'Plugged'
+                                              : 'Unplugged',
                                           maxWidth: constraints.maxWidth,
                                         ),
                                         _StatusItem(
@@ -301,20 +320,26 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                             addBillCredit,
                             constraints.maxWidth,
                           ),
-                          _testButton(
-                            "Start Relay",
-                            () => bluetoothController.addLog(
-                              '{ "relay": "start" }',
-                            ),
-                            constraints.maxWidth,
-                          ),
-                          _testButton(
-                            "Stop Relay",
-                            () => bluetoothController.addLog(
-                              '{ "relay": "stop" }',
-                            ),
-                            constraints.maxWidth,
-                          ),
+                          _testButton("Start Relay", () {
+                            bluetoothController.sendData('START');
+                            bluetoothController.addLog('Sent START command');
+                            setState(() {
+                              relayStatus = 'ON';
+                            });
+                          }, constraints.maxWidth),
+                          _testButton("Stop Relay", () {
+                            bluetoothController.sendData('STOP');
+                            bluetoothController.addLog('Sent STOP command');
+                            setState(() {
+                              relayStatus = 'OFF';
+                            });
+                          }, constraints.maxWidth),
+                          _testButton("Simulate Plug", () {
+                            bluetoothController.simulatePlugged();
+                          }, constraints.maxWidth),
+                          _testButton("Simulate Unplug", () {
+                            bluetoothController.simulateUnplugged();
+                          }, constraints.maxWidth),
                           _testButton(
                             "Reset MCU",
                             () => bluetoothController.addLog(

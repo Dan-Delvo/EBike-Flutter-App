@@ -1,53 +1,185 @@
-/*
- * ESP32 BLE Server Example for E-Bike Charging Station
- * 
- * IMPORTANT: This uses BLE (Bluetooth Low Energy), NOT Classic Bluetooth
- * ESP32 with WiFi 802.11 b/g/n + Bluetooth
- * 
- * This code:
- * - Disables WiFi to prevent radio interference
- * - Uses BLE for communication with Flutter app
- * - Prints BLE MAC address on startup
- */
+// ===== ESP32 BILL ACCEPTOR + COIN SLOT + BLE + RELAY =====
 
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
-#include <WiFi.h>
 
-// Device name - MUST match the name in your Flutter app
-#define DEVICE_NAME "LUIGI"
+// BLE Service & Characteristic UUIDs
+#define SERVICE_UUID        "12345678-1234-1234-1234-1234567890ab"
+#define CHARACTERISTIC_UUID "abcd1234-5678-90ab-cdef-1234567890ab"
 
-// UUIDs for the service and characteristics
-// You can generate your own UUIDs at https://www.uuidgenerator.net/
-#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+const byte billPin = 26;          // Bill acceptor pulse pin
+const byte coinPin = 19;          // Coin slot pulse pin
+const byte relayPin = 4;          // Relay control pin
 
-BLEServer* pServer = NULL;
-BLECharacteristic* pCharacteristic = NULL;
+volatile unsigned int billPulseCount = 0;
+volatile unsigned int coinPulseCount = 0;
+volatile bool billInProgress = false;
+volatile bool coinInProgress = false;
+
+unsigned int credit = 0;
+
+volatile unsigned long lastBillTime = 0;
+volatile unsigned long lastCoinTime = 0;
+
+const unsigned long billDebounce = 80;
+const unsigned long coinDebounce = 80;
+const unsigned long billTimeout = 200;
+const unsigned long coinTimeout = 100;
+
+BLEServer* pServer = nullptr;
+BLECharacteristic* pCharacteristic = nullptr;
 bool deviceConnected = false;
-bool oldDeviceConnected = false;
 
-// Callback class for server connection events
-class MyServerCallbacks: public BLEServerCallbacks {
-    void onConnect(BLEServer* pServer) {
-      deviceConnected = true;
-      Serial.println("Device connected!");
-    }
+// ===== ISR =====
+void IRAM_ATTR billPulseISR() {
+  unsigned long currentTime = millis();
+  if (currentTime - lastBillTime > billDebounce) {
+    billPulseCount++;
+    billInProgress = true;
+    lastBillTime = currentTime;
+  }
+}
 
-    void onDisconnect(BLEServer* pServer) {
-      deviceConnected = false;
-      Serial.println("Device disconnected!");
-    }
+void IRAM_ATTR coinPulseISR() {
+  unsigned long currentTime = millis();
+  if (currentTime - lastCoinTime > coinDebounce) {
+    coinPulseCount++;
+    coinInProgress = true;
+    lastCoinTime = currentTime;
+  }
+}
+
+// ===== BLE Server Callbacks =====
+class MyServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) {
+    deviceConnected = true;
+    Serial.println("Device connected!");
+  };
+  void onDisconnect(BLEServer* pServer) {
+    deviceConnected = false;
+    Serial.println("Device disconnected!");
+  }
 };
 
-// Callback class for characteristic events (receiving data from Flutter)
-class MyCallbacks: public BLECharacteristicCallbacks {
-    void onWrite(BLECharacteristic *pCharacteristic) {
-      String value = pCharacteristic->getValue();
+// ===== BLE Characteristic Callbacks (for WRITE) =====
+class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pCharacteristic) {
+    String command = String(pCharacteristic->getValue().c_str());
+    command.trim();
+    command.toUpperCase();
+    
+    if (command.length() > 0) {
+      Serial.println("Received command: " + command);
       
-      if (value.length() > 0) {
+      if (command == "START") {
+        digitalWrite(relayPin, HIGH);  // Turn relay ON
+        Serial.println("RELAY: ON");
+        
+        // Send confirmation back
+        if (deviceConnected) {
+          pCharacteristic->setValue("RELAY:ON");
+          pCharacteristic->notify();
+        }
+      }
+      else if (command == "STOP") {
+        digitalWrite(relayPin, LOW);   // Turn relay OFF
+        Serial.println("RELAY: OFF");
+        
+        // Send confirmation back
+        if (deviceConnected) {
+          pCharacteristic->setValue("RELAY:OFF");
+          pCharacteristic->notify();
+        }
+      }
+    }
+  }
+};
+
+void setup() {
+  Serial.begin(115200);
+
+  // Setup Pins
+  pinMode(billPin, INPUT_PULLUP);
+  pinMode(coinPin, INPUT_PULLUP);
+  pinMode(relayPin, OUTPUT);
+  digitalWrite(relayPin, LOW);  // Start with relay OFF
+  
+  attachInterrupt(digitalPinToInterrupt(billPin), billPulseISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(coinPin), coinPulseISR, FALLING);
+
+  // ===== BLE Setup =====
+  BLEDevice::init("LUIGI"); // BLE Device name - MUST match Flutter app
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  pCharacteristic = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID,
+                      BLECharacteristic::PROPERTY_READ   |
+                      BLECharacteristic::PROPERTY_WRITE  |
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+  pCharacteristic->addDescriptor(new BLE2902());
+  pCharacteristic->setCallbacks(new MyCharacteristicCallbacks());
+
+  pService->start();
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->start();
+
+  // Print BLE MAC
+  String mac = BLEDevice::getAddress().toString().c_str();
+  Serial.println("ESP32 BLE MAC: " + mac);
+
+  Serial.println("=== Bill Acceptor + Coin Slot + Relay BLE Ready ===");
+}
+
+void loop() {
+  // Process COIN
+  if (coinInProgress && (millis() - lastCoinTime > coinTimeout)) {
+    credit += coinPulseCount;  // 1 pulse = ₱1
+    String msg = "COIN:" + String(coinPulseCount);
+    Serial.println(msg);
+
+    if (deviceConnected) {
+      pCharacteristic->setValue(msg.c_str());
+      pCharacteristic->notify();
+    }
+
+    coinPulseCount = 0;
+    coinInProgress = false;
+  }
+
+  // Process BILL
+  if (billInProgress && (millis() - lastBillTime > billTimeout)) {
+    int billValue = 0;
+    if (billPulseCount == 2) { billValue = 20; }
+    else if (billPulseCount == 5) { billValue = 50; }
+
+    String msg;
+    if (billValue > 0) {
+      credit += billValue;
+      msg = "BILL:" + String(billValue);
+      Serial.println(msg);
+    } else {
+      msg = "REJECTED:" + String(billPulseCount);
+      Serial.println(msg);
+    }
+
+    if (deviceConnected) {
+      pCharacteristic->setValue(msg.c_str());
+      pCharacteristic->notify();
+    }
+
+    billPulseCount = 0;
+    billInProgress = false;
+  }
+
+  delay(10); // small delay to avoid busy loop
+}
         Serial.print("Received from Flutter: ");
         Serial.println(value);
         

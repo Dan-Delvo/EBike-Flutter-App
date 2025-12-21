@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class BluetoothController extends ChangeNotifier {
   BluetoothDevice? device;
@@ -13,22 +14,39 @@ class BluetoothController extends ChangeNotifier {
   bool _isConnected = false;
   String _status = 'Disconnected';
   final List<String> _logs = [];
+  bool _isPlugged = false;
 
   // ESP32 configuration
-  final String esp32Address = '84:1F:E8:69:2F:FE';
-  final String esp32Name = 'LUIGI';
+  final String esp32Address = 'D4:E9:F4:C4:01:6E';
+  final String esp32Name = 'LUIGI_BLE';
 
   bool get isConnecting => _isConnecting;
   bool get isConnected => _isConnected;
   String get status => _status;
   List<String> get logs => List.unmodifiable(_logs);
+  bool get isPlugged => _isPlugged;
 
-  // Callback for receiving data
+  // Callbacks for receiving data
   Function(String)? onDataReceived;
+  Function()? onPlugged;
+  Function()? onUnplugged;
 
   void addLog(String log) {
     _logs.add(log);
     notifyListeners();
+  }
+
+  // Testing helpers: simulate plug/unplug events locally
+  void simulatePlugged() {
+    _isPlugged = true;
+    addLog('⚡ Simulated PLUGGED');
+    onPlugged?.call();
+  }
+
+  void simulateUnplugged() {
+    _isPlugged = false;
+    addLog('⚠️ Simulated UNPLUGGED');
+    onUnplugged?.call();
   }
 
   Future<void> connect() async {
@@ -50,6 +68,10 @@ class BluetoothController extends ChangeNotifier {
         addLog('Bluetooth is OFF. Please turn it on.');
         throw Exception('Bluetooth is turned off');
       }
+
+      // Request runtime permissions for Android
+      addLog('Checking permissions...');
+      await _requestPermissions();
 
       // Clear previous scan results
       await FlutterBluePlus.stopScan();
@@ -102,12 +124,25 @@ class BluetoothController extends ChangeNotifier {
       if (device == null) {
         addLog('❌ ESP32 "$esp32Name" (MAC: $esp32Address) NOT FOUND');
         addLog('');
+        addLog('EXPECTED:');
+        addLog('  Name: "$esp32Name"');
+        addLog('  MAC: "$esp32Address"');
+        addLog('');
+        addLog('ALL DEVICES FOUND:');
+        for (var result in finalResults) {
+          String name = result.device.platformName.isEmpty
+              ? '(No Name)'
+              : result.device.platformName;
+          String mac = result.device.remoteId.str;
+          addLog('  • $name');
+          addLog('    MAC: $mac');
+          addLog('    RSSI: ${result.rssi}');
+        }
+        addLog('');
         addLog('TROUBLESHOOTING:');
-        addLog('1. Check if ESP32 shows up in the list above');
-        addLog('2. If not listed: ESP32 is not advertising BLE');
-        addLog('3. Upload the ESP32_BLE_Example.ino code to your ESP32');
-        addLog('4. Check Serial Monitor to see BLE MAC address');
-        addLog('5. Update MAC address in Flutter app if different');
+        addLog('1. Find your ESP32 in the list above');
+        addLog('2. Update MAC/Name in bluetooth_controller.dart');
+        addLog('3. If not listed: ESP32 is not advertising BLE');
         throw Exception(
           'ESP32 "$esp32Name" not found.\n'
           'Check diagnostics logs for all devices found.',
@@ -150,7 +185,22 @@ class BluetoothController extends ChangeNotifier {
               if (value.isNotEmpty) {
                 String msg = utf8.decode(value).trim();
                 addLog('ESP32: $msg');
-                onDataReceived?.call(msg);
+
+                final String up = msg.toUpperCase();
+                if (up == 'PLUGGED') {
+                  _isPlugged = true;
+                  addLog('⚡ Charger PLUGGED');
+                  notifyListeners();
+                  onPlugged?.call();
+                } else if (up == 'UNPLUGGED') {
+                  _isPlugged = false;
+                  addLog('⚠️ Charger UNPLUGGED');
+                  notifyListeners();
+                  onUnplugged?.call();
+                } else {
+                  // Handle other messages (COIN, BILL, RELAY events, etc.)
+                  onDataReceived?.call(msg);
+                }
               }
             });
             addLog('  ✓ Subscribed to notifications');
@@ -193,6 +243,48 @@ class BluetoothController extends ChangeNotifier {
     _status = 'Disconnected';
     addLog('Disconnected from ESP32');
     notifyListeners();
+  }
+
+  // Request necessary permissions for Bluetooth scanning
+  Future<void> _requestPermissions() async {
+    // Request Bluetooth permissions
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.location,
+    ].request();
+
+    // Check if all permissions are granted
+    bool allGranted = statuses.values.every((status) => status.isGranted);
+
+    if (!allGranted) {
+      List<String> deniedPerms = [];
+      statuses.forEach((permission, status) {
+        if (!status.isGranted) {
+          deniedPerms.add(permission.toString().split('.').last);
+        }
+      });
+
+      addLog('❌ Permissions denied: ${deniedPerms.join(", ")}');
+      addLog('Please enable Bluetooth and Location permissions in Settings.');
+      throw Exception(
+        'Required permissions not granted: ${deniedPerms.join(", ")}',
+      );
+    }
+
+    addLog('✓ All permissions granted');
+
+    // Check if location services are enabled
+    bool serviceEnabled = await Permission.location.serviceStatus.isEnabled;
+    if (!serviceEnabled) {
+      addLog('⚠ Location services are OFF');
+      addLog('Please enable Location in device settings.');
+      throw Exception(
+        'Location services must be enabled for Bluetooth scanning',
+      );
+    }
+
+    addLog('✓ Location services enabled');
   }
 
   @override

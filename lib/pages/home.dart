@@ -17,26 +17,45 @@ class _HomePageState extends State<HomePage> {
   Duration timeLeft = Duration.zero;
   Timer? timer;
   Timer? idleTimer;
+  Timer? graceTimer;
   bool isCharging = false;
   bool isIdle = true; // Start in idle mode
+  bool isWaitingForPlug = false; // Waiting for bike to be plugged back in
+  int graceSecondsLeft = 0;
   String? userEmail; // Store user email for notifications
 
   static const double ratePeso = 5; // 5 pesos
   static const int rateMinutes = 10; // = 10 minutes
   static const int idleTimeoutSeconds =
       30; // Go idle after 30 seconds of inactivity
+  static const int graceTimeoutSeconds =
+      60; // Grace period for unplugging (1 minute)
 
   @override
   void initState() {
     super.initState();
     startIdleTimer();
+    setupBluetoothCallbacks();
   }
 
   @override
   void dispose() {
     timer?.cancel();
     idleTimer?.cancel();
+    graceTimer?.cancel();
     super.dispose();
+  }
+
+  void setupBluetoothCallbacks() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final bluetoothController = Provider.of<BluetoothController>(
+        context,
+        listen: false,
+      );
+
+      bluetoothController.onPlugged = handlePlugged;
+      bluetoothController.onUnplugged = handleUnplugged;
+    });
   }
 
   // Start idle timer
@@ -81,9 +100,19 @@ class _HomePageState extends State<HomePage> {
       context,
       listen: false,
     );
+    final bluetoothController = Provider.of<BluetoothController>(
+      context,
+      listen: false,
+    );
+
     double credits = creditsController.credits;
     if (credits < ratePeso) {
       showMessage("Not enough credits. Minimum ₱5 required.");
+      return;
+    }
+
+    if (!bluetoothController.isPlugged) {
+      showMessage("Please plug in the E-Bike first.");
       return;
     }
 
@@ -94,8 +123,13 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       timeLeft = creditsToTime(credits);
       isCharging = true;
+      isWaitingForPlug = false;
     });
     creditsController.reset();
+
+    // Send START command to ESP32 to turn on relay
+    bluetoothController.sendData('START');
+    bluetoothController.addLog('Sent START command to ESP32');
 
     // Send start email if user provided email
     if (userEmail != null && userEmail!.isNotEmpty) {
@@ -107,7 +141,7 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           timeLeft -= const Duration(seconds: 1);
         });
-      } else {
+      } else if (timeLeft.inSeconds <= 0) {
         stopCharging();
       }
     });
@@ -116,6 +150,15 @@ class _HomePageState extends State<HomePage> {
   // Stop charging
   void stopCharging() {
     timer?.cancel();
+
+    // Send STOP command to ESP32 to turn off relay
+    final bluetoothController = Provider.of<BluetoothController>(
+      context,
+      listen: false,
+    );
+    bluetoothController.sendData('STOP');
+    bluetoothController.addLog('Sent STOP command to ESP32');
+
     showMessage("Charging Finished! Please Unplug The Battery.");
 
     // Send completion email if user provided email
@@ -127,8 +170,194 @@ class _HomePageState extends State<HomePage> {
       isCharging = false;
       timeLeft = Duration.zero;
       isIdle = true; // Go to idle mode after charging finishes
+      isWaitingForPlug = false;
+      graceSecondsLeft = 0;
       userEmail = null; // Clear email for next session
     });
+  }
+
+  void handleUnplugged() {
+    if (!isCharging) return; // Only handle if currently charging
+
+    final bluetoothController = Provider.of<BluetoothController>(
+      context,
+      listen: false,
+    );
+
+    // Sound buzzer
+    bluetoothController.sendData('BUZZER_ON');
+    bluetoothController.addLog('⚠️ E-Bike unplugged! Buzzer ON');
+
+    // Pause main timer and enter grace period
+    timer?.cancel();
+
+    setState(() {
+      isWaitingForPlug = true;
+      graceSecondsLeft = graceTimeoutSeconds;
+    });
+
+    // Show warning dialog
+    showUnpluggedWarning();
+
+    // Start grace period countdown
+    graceTimer?.cancel();
+    graceTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() {
+        graceSecondsLeft--;
+      });
+
+      if (graceSecondsLeft <= 0) {
+        // Time's up - terminate charging session
+        graceTimer?.cancel();
+        forceStopCharging();
+      }
+    });
+  }
+
+  void handlePlugged() {
+    if (!isCharging || !isWaitingForPlug) {
+      // Not in grace period, just update UI if needed
+      return;
+    }
+
+    final bluetoothController = Provider.of<BluetoothController>(
+      context,
+      listen: false,
+    );
+
+    // Turn off buzzer
+    bluetoothController.sendData('BUZZER_OFF');
+    bluetoothController.addLog('✅ E-Bike plugged back in! Buzzer OFF');
+
+    // Cancel grace period and resume charging
+    graceTimer?.cancel();
+    if (Navigator.canPop(context)) {
+      Navigator.of(context).pop(); // Close warning dialog if open
+    }
+
+    setState(() {
+      isWaitingForPlug = false;
+      graceSecondsLeft = 0;
+    });
+
+    showMessage("Charging resumed!");
+
+    // Resume main timer
+    timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (timeLeft.inSeconds > 0) {
+        setState(() {
+          timeLeft -= const Duration(seconds: 1);
+        });
+      } else if (timeLeft.inSeconds <= 0) {
+        stopCharging();
+      }
+    });
+  }
+
+  void forceStopCharging() {
+    final bluetoothController = Provider.of<BluetoothController>(
+      context,
+      listen: false,
+    );
+    final creditsController = Provider.of<CreditsController>(
+      context,
+      listen: false,
+    );
+
+    timer?.cancel();
+    graceTimer?.cancel();
+
+    // Turn off relay and buzzer
+    bluetoothController.sendData('STOP');
+    bluetoothController.sendData('BUZZER_OFF');
+    bluetoothController.addLog('❌ Grace period expired - charging terminated');
+
+    // Send termination email
+    if (userEmail != null && userEmail!.isNotEmpty) {
+      sendEmailNotification(userEmail!, 'terminated');
+    }
+
+    // Close warning dialog if open
+    if (Navigator.canPop(context)) {
+      Navigator.of(context).pop();
+    }
+
+    // Wipe time and credits
+    setState(() {
+      isCharging = false;
+      isWaitingForPlug = false;
+      timeLeft = Duration.zero;
+      graceSecondsLeft = 0;
+      isIdle = true;
+    });
+
+    creditsController.reset();
+
+    showMessage("Session terminated - E-Bike not reconnected in time.");
+  }
+
+  void showUnpluggedWarning() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            // Update dialog every half second while waiting for plug
+            Timer.periodic(const Duration(milliseconds: 500), (t) {
+              if (mounted && isWaitingForPlug) {
+                setDialogState(() {});
+              } else {
+                t.cancel();
+              }
+            });
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.orange.shade700,
+                    size: 30,
+                  ),
+                  const SizedBox(width: 10),
+                  const Text('E-Bike Unplugged!'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Please plug the E-Bike back in.',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Time remaining: $graceSecondsLeft seconds',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: graceSecondsLeft <= 10
+                          ? Colors.red
+                          : Colors.orange,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'If not plugged in time, your session will be terminated.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   // User feedback
@@ -463,6 +692,57 @@ class _HomePageState extends State<HomePage> {
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.max,
               children: [
+                // Plug status indicator
+                Consumer<BluetoothController>(
+                  builder: (context, bluetoothController, child) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: bluetoothController.isPlugged
+                            ? Colors.green.shade100
+                            : Colors.red.shade100,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: bluetoothController.isPlugged
+                              ? Colors.green.shade300
+                              : Colors.red.shade300,
+                          width: 2,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            bluetoothController.isPlugged
+                                ? Icons.power
+                                : Icons.power_off,
+                            color: bluetoothController.isPlugged
+                                ? Colors.green.shade700
+                                : Colors.red.shade700,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            bluetoothController.isPlugged
+                                ? 'E-Bike Plugged In'
+                                : 'E-Bike Not Plugged',
+                            style: TextStyle(
+                              color: bluetoothController.isPlugged
+                                  ? Colors.green.shade700
+                                  : Colors.red.shade700,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 20),
                 Container(
                   padding: EdgeInsets.all(iconSize * 0.2),
                   decoration: BoxDecoration(
@@ -476,6 +756,38 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 const SizedBox(height: 20),
+                // Show grace period warning if waiting for plug
+                if (isWaitingForPlug)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.orange.shade300,
+                        width: 2,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.orange.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'PLUG BIKE: $graceSecondsLeft sec',
+                          style: TextStyle(
+                            color: Colors.orange.shade700,
+                            fontWeight: FontWeight.bold,
+                            fontSize: labelSize * 0.9,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
@@ -483,17 +795,21 @@ class _HomePageState extends State<HomePage> {
                     style: TextStyle(
                       fontSize: timeSize,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade900,
+                      color: isWaitingForPlug
+                          ? Colors.grey
+                          : Colors.blue.shade900,
                       letterSpacing: 2,
                     ),
                   ),
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  "Time Remaining",
+                  isWaitingForPlug ? "Time Paused" : "Time Remaining",
                   style: TextStyle(
                     fontSize: labelSize,
-                    color: Colors.grey.shade600,
+                    color: isWaitingForPlug
+                        ? Colors.orange.shade600
+                        : Colors.grey.shade600,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -840,7 +1156,7 @@ class _HomePageState extends State<HomePage> {
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Text(
-                        'E-Bike Charging Station',
+                        'E-Bike Charging Station v12',
                         style: TextStyle(
                           fontSize: fontSize,
                           fontWeight: FontWeight.bold,
