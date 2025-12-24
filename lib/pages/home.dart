@@ -243,6 +243,10 @@ class _HomePageState extends State<HomePage> {
       if (graceSecondsLeft <= 0) {
         // Time's up - terminate charging session
         graceTimer?.cancel();
+        // Send termination email if user provided email
+        if (userEmail != null && userEmail!.isNotEmpty) {
+          sendEmailNotification(userEmail!, 'terminated');
+        }
         forceStopCharging();
       }
     });
