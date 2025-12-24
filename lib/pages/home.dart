@@ -111,11 +111,6 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    if (!bluetoothController.isPlugged) {
-      showMessage("Please plug in the E-Bike first.");
-      return;
-    }
-
     // Show email dialog
     await showEmailDialog();
 
@@ -123,7 +118,8 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       timeLeft = creditsToTime(credits);
       isCharging = true;
-      isWaitingForPlug = false;
+      // If already plugged, clear waiting; otherwise enter waiting/grace mode
+      isWaitingForPlug = bluetoothController.isPlugged ? false : true;
     });
     creditsController.reset();
 
@@ -131,20 +127,58 @@ class _HomePageState extends State<HomePage> {
     bluetoothController.sendData('START');
     bluetoothController.addLog('Sent START command to ESP32');
 
+    // If not plugged, start the 1-minute grace warning and timer
+    if (!bluetoothController.isPlugged) {
+      // Sound buzzer and show dialog
+      bluetoothController.sendData('BUZZER_ON');
+      bluetoothController.addLog(
+        '⚠️ Started while UNPLUGGED - showing grace timer',
+      );
+
+      setState(() {
+        graceSecondsLeft = graceTimeoutSeconds;
+      });
+
+      showMessage(
+        'Charging started. E-Bike not plugged - please reconnect within 1 minute.',
+      );
+      showUnpluggedWarning();
+
+      graceTimer?.cancel();
+      graceTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        setState(() {
+          graceSecondsLeft--;
+        });
+
+        if (graceSecondsLeft <= 0) {
+          graceTimer?.cancel();
+          forceStopCharging();
+        }
+      });
+    }
+
     // Send start email if user provided email
     if (userEmail != null && userEmail!.isNotEmpty) {
       sendEmailNotification(userEmail!, 'start');
     }
 
-    timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (timeLeft.inSeconds > 0) {
-        setState(() {
-          timeLeft -= const Duration(seconds: 1);
-        });
-      } else if (timeLeft.inSeconds <= 0) {
-        stopCharging();
-      }
-    });
+    // Start main timer (counts down purchased time) ONLY if the bike is plugged.
+    // If the session was started while unplugged we keep the main timer paused
+    // and wait for the plug event to resume it.
+    if (bluetoothController.isPlugged) {
+      timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (timeLeft.inSeconds > 0) {
+          setState(() {
+            timeLeft -= const Duration(seconds: 1);
+          });
+        } else if (timeLeft.inSeconds <= 0) {
+          stopCharging();
+        }
+      });
+    } else {
+      // Ensure main timer is not running while waiting for plug
+      timer?.cancel();
+    }
   }
 
   // Stop charging
@@ -242,16 +276,18 @@ class _HomePageState extends State<HomePage> {
 
     showMessage("Charging resumed!");
 
-    // Resume main timer
-    timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (timeLeft.inSeconds > 0) {
-        setState(() {
-          timeLeft -= const Duration(seconds: 1);
-        });
-      } else if (timeLeft.inSeconds <= 0) {
-        stopCharging();
-      }
-    });
+    // Resume main timer only if it's not already running
+    if (timer == null || !timer!.isActive) {
+      timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (timeLeft.inSeconds > 0) {
+          setState(() {
+            timeLeft -= const Duration(seconds: 1);
+          });
+        } else if (timeLeft.inSeconds <= 0) {
+          stopCharging();
+        }
+      });
+    }
   }
 
   void forceStopCharging() {
