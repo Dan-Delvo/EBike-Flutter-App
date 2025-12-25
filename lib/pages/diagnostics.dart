@@ -165,9 +165,30 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
           ),
           body: LayoutBuilder(
             builder: (context, constraints) {
-              final bool isWideScreen = constraints.maxWidth > 800;
-              final double padding = constraints.maxWidth > 600 ? 20 : 12;
-              final double spacing = constraints.maxWidth > 600 ? 20 : 12;
+              // Improved breakpoints for better mobile responsiveness
+              final bool isDesktop = constraints.maxWidth > 1200;
+              final bool isTablet =
+                  constraints.maxWidth > 800 && constraints.maxWidth <= 1200;
+              final bool isLargePhone =
+                  constraints.maxWidth > 600 && constraints.maxWidth <= 800;
+              final bool isSmallPhone = constraints.maxWidth <= 600;
+              final bool isWideScreen = isDesktop || isTablet;
+
+              // Responsive padding and spacing
+              final double padding = isDesktop
+                  ? 24
+                  : isTablet
+                  ? 20
+                  : isLargePhone
+                  ? 16
+                  : 12;
+              final double spacing = isDesktop
+                  ? 24
+                  : isTablet
+                  ? 20
+                  : isLargePhone
+                  ? 16
+                  : 12;
 
               return Padding(
                 padding: EdgeInsets.all(padding),
@@ -307,8 +328,10 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                       title: "Manual Test Controls",
                       maxWidth: constraints.maxWidth,
                       child: Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
+                        spacing:
+                            12, // Increased from 10 to 12 for better spacing on small screens
+                        runSpacing:
+                            12, // Increased from 10 to 12 for better vertical spacing
                         children: [
                           _testButton(
                             "Test Coin",
@@ -367,8 +390,26 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
     required Widget child,
     required double maxWidth,
   }) {
-    final double cardPadding = maxWidth > 600 ? 18 : 12;
-    final double titleSize = maxWidth > 600 ? 18 : 16;
+    // More granular responsive breakpoints
+    final bool isSmallPhone = maxWidth < 400;
+    final bool isMediumPhone = maxWidth >= 400 && maxWidth < 600;
+    final bool isLargePhone = maxWidth >= 600 && maxWidth < 800;
+    final bool isTablet = maxWidth >= 800;
+
+    final double cardPadding = isTablet
+        ? 18
+        : isLargePhone
+        ? 16
+        : isMediumPhone
+        ? 14
+        : 12;
+    final double titleSize = isTablet
+        ? 18
+        : isLargePhone
+        ? 17
+        : isMediumPhone
+        ? 16
+        : 15;
 
     return Card(
       elevation: 6,
@@ -502,9 +543,32 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
   }
 
   Widget _testButton(String label, VoidCallback onPressed, double maxWidth) {
-    final double horizontalPadding = maxWidth > 600 ? 16 : 12;
-    final double verticalPadding = maxWidth > 600 ? 12 : 8;
-    final double fontSize = maxWidth > 600 ? 14 : 12;
+    final bool isSmallPhone = maxWidth < 400;
+    final bool isMediumPhone = maxWidth >= 400 && maxWidth < 600;
+    final bool isLargePhone = maxWidth >= 600 && maxWidth < 800;
+    final bool isTablet = maxWidth >= 800 && maxWidth < 1200;
+
+    final double horizontalPadding = isTablet
+        ? 16
+        : isLargePhone
+        ? 12
+        : isMediumPhone
+        ? 12
+        : 16; // Increased from 8 to 16 for better touch targets
+    final double verticalPadding = isTablet
+        ? 10
+        : isLargePhone
+        ? 8
+        : isMediumPhone
+        ? 8
+        : 12; // Increased from 6 to 12 for better touch targets
+    final double fontSize = isTablet
+        ? 14
+        : isLargePhone
+        ? 13
+        : isMediumPhone
+        ? 12
+        : 12; // Increased from 11 to 12 for better readability on small phones
 
     return Container(
       decoration: BoxDecoration(
@@ -528,6 +592,7 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
             horizontal: horizontalPadding,
             vertical: verticalPadding,
           ),
+          minimumSize: const Size(48, 48), // Minimum touch target size
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),

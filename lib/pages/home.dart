@@ -5,6 +5,9 @@ import 'package:my_app/controllers/credits_controller.dart';
 import 'package:my_app/controllers/bluetooth_controller.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter_sms/flutter_sms.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:io' show Platform;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -23,6 +26,7 @@ class _HomePageState extends State<HomePage> {
   bool isWaitingForPlug = false; // Waiting for bike to be plugged back in
   int graceSecondsLeft = 0;
   String? userEmail; // Store user email for notifications
+  String? userPhone; // Store user phone for SMS notifications
 
   static const double ratePeso = 5; // 5 pesos
   static const int rateMinutes = 10; // = 10 minutes
@@ -111,8 +115,8 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    // Show email dialog
-    await showEmailDialog();
+    // Show contact dialog
+    await showContactDialog();
 
     // Start charging process
     setState(() {
@@ -161,6 +165,10 @@ class _HomePageState extends State<HomePage> {
     if (userEmail != null && userEmail!.isNotEmpty) {
       sendEmailNotification(userEmail!, 'start');
     }
+    // Send start SMS if user provided phone
+    if (userPhone != null && userPhone!.isNotEmpty) {
+      sendSmsNotification(userPhone!, 'start');
+    }
 
     // Start main timer (counts down purchased time) ONLY if the bike is plugged.
     // If the session was started while unplugged we keep the main timer paused
@@ -199,6 +207,10 @@ class _HomePageState extends State<HomePage> {
     if (userEmail != null && userEmail!.isNotEmpty) {
       sendEmailNotification(userEmail!, 'done');
     }
+    // Send completion SMS if user provided phone
+    if (userPhone != null && userPhone!.isNotEmpty) {
+      sendSmsNotification(userPhone!, 'done');
+    }
 
     setState(() {
       isCharging = false;
@@ -207,6 +219,7 @@ class _HomePageState extends State<HomePage> {
       isWaitingForPlug = false;
       graceSecondsLeft = 0;
       userEmail = null; // Clear email for next session
+      userPhone = null; // Clear phone for next session
     });
   }
 
@@ -246,6 +259,10 @@ class _HomePageState extends State<HomePage> {
         // Send termination email if user provided email
         if (userEmail != null && userEmail!.isNotEmpty) {
           sendEmailNotification(userEmail!, 'terminated');
+        }
+        // Send termination SMS if user provided phone
+        if (userPhone != null && userPhone!.isNotEmpty) {
+          sendSmsNotification(userPhone!, 'terminated');
         }
         forceStopCharging();
       }
@@ -315,6 +332,10 @@ class _HomePageState extends State<HomePage> {
     // Send termination email
     if (userEmail != null && userEmail!.isNotEmpty) {
       sendEmailNotification(userEmail!, 'terminated');
+    }
+    // Send termination SMS
+    if (userPhone != null && userPhone!.isNotEmpty) {
+      sendSmsNotification(userPhone!, 'terminated');
     }
 
     // Close warning dialog if open
@@ -407,9 +428,14 @@ class _HomePageState extends State<HomePage> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // Show email input dialog
-  Future<void> showEmailDialog() async {
-    final TextEditingController emailController = TextEditingController();
+  // Show contact input dialog (email and/or phone)
+  Future<void> showContactDialog() async {
+    final TextEditingController emailController = TextEditingController(
+      text: userEmail ?? '',
+    );
+    final TextEditingController phoneController = TextEditingController(
+      text: userPhone ?? '',
+    );
 
     await showDialog(
       context: context,
@@ -427,10 +453,14 @@ class _HomePageState extends State<HomePage> {
                   color: Colors.blue.shade100,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(Icons.email, color: Colors.blue.shade700, size: 24),
+                child: Icon(
+                  Icons.notifications,
+                  color: Colors.blue.shade700,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 12),
-              const Text('Email Notification'),
+              const Text('Contact Information'),
             ],
           ),
           content: Column(
@@ -438,7 +468,7 @@ class _HomePageState extends State<HomePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Enter your email to receive notifications when charging is complete (optional)',
+                'Enter your email and/or phone number to receive notifications (optional)',
                 style: TextStyle(fontSize: 14),
               ),
               const SizedBox(height: 16),
@@ -455,12 +485,27 @@ class _HomePageState extends State<HomePage> {
                   fillColor: Colors.grey.shade50,
                 ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  hintText: '+639XXXXXXXXX',
+                  prefixIcon: const Icon(Icons.phone_outlined),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                ),
+              ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () {
                 userEmail = null;
+                userPhone = null;
                 Navigator.of(context).pop();
               },
               child: Text(
@@ -477,12 +522,20 @@ class _HomePageState extends State<HomePage> {
               ),
               child: ElevatedButton(
                 onPressed: () {
-                  String email = emailController.text.trim();
+                  final email = emailController.text.trim();
+                  final phone = phoneController.text.trim();
                   if (email.isNotEmpty && !isValidEmail(email)) {
                     showMessage('Please enter a valid email address');
                     return;
                   }
-                  userEmail = email.isNotEmpty ? email : null;
+                  if (phone.isNotEmpty && !isValidPhone(phone)) {
+                    showMessage('Please enter a valid phone number');
+                    return;
+                  }
+                  setState(() {
+                    userEmail = email.isNotEmpty ? email : null;
+                    userPhone = phone.isNotEmpty ? phone : null;
+                  });
                   Navigator.of(context).pop();
                 },
                 style: ElevatedButton.styleFrom(
@@ -512,6 +565,12 @@ class _HomePageState extends State<HomePage> {
   // Validate email format
   bool isValidEmail(String email) {
     return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email);
+  }
+
+  // Validate phone number (simple, PH format)
+  bool isValidPhone(String phone) {
+    // Accepts +639XXXXXXXXX or 09XXXXXXXXX
+    return RegExp(r'^(\+639|09)\d{9}$').hasMatch(phone);
   }
 
   // Send email notification via API
@@ -559,6 +618,45 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // Send SMS notification via flutter_sms package
+  Future<void> sendSmsNotification(String phone, String status) async {
+    try {
+      print('📱 Attempting to send SMS notification...');
+      print('   Phone: $phone');
+      print('   Status: $status');
+
+      // Request SMS permission
+      var permissionStatus = await Permission.sms.request();
+      if (!permissionStatus.isGranted) {
+        print('❌ SMS permission denied');
+        return;
+      }
+
+      // Compose message based on status
+      String msg;
+      if (status == 'start') {
+        msg = 'Charging started.';
+      } else if (status == 'done') {
+        msg = 'Charging finished! Please unplug the battery.';
+      } else if (status == 'terminated') {
+        msg = 'Session terminated - E-Bike not reconnected in time.';
+      } else {
+        msg = 'Charging status: $status';
+      }
+      print('   Message: $msg');
+      // Send SMS: on Android attempt direct send, on iOS opens Messages (direct send not allowed)
+      bool sendDirect = Platform.isAndroid;
+      final String result = await sendSMS(
+        message: msg,
+        recipients: [phone],
+        sendDirect: sendDirect,
+      );
+      print('✅ SMS send result: $result');
+    } catch (e) {
+      print('❌ Error sending SMS notification: $e');
+    }
+  }
+
   // Format duration nicely
   String formatDuration(Duration d) {
     String h = d.inHours.toString().padLeft(2, "0");
@@ -580,49 +678,54 @@ class _HomePageState extends State<HomePage> {
         onTap: isIdle ? exitIdleMode : resetIdleTimer,
         child: Stack(
           children: [
-            // Main content
             LayoutBuilder(
               builder: (context, constraints) {
-                // Determine if we should use column layout (mobile) or row layout (tablet/desktop)
                 final bool isWideScreen = constraints.maxWidth > 800;
-                final double padding = constraints.maxWidth > 600 ? 16 : 8;
+                final double padding = isWideScreen ? 24 : 16;
 
-                return isWideScreen
-                    ? Padding(
-                        padding: EdgeInsets.all(padding),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(
-                              flex: 1,
-                              child: Column(
-                                children: [
-                                  Expanded(flex: 3, child: creditAvailable()),
-                                  SizedBox(height: padding),
-                                  Expanded(flex: 4, child: paymentMethod()),
-                                ],
-                              ),
-                            ),
-                            SizedBox(width: padding),
-                            Expanded(flex: 1, child: timeRemaining()),
-                          ],
+                if (isWideScreen) {
+                  return Padding(
+                    padding: EdgeInsets.all(padding),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          flex: 1,
+                          child: Column(
+                            children: [
+                              Expanded(flex: 3, child: creditAvailable()),
+                              SizedBox(height: padding),
+                              Expanded(flex: 4, child: paymentMethod()),
+                            ],
+                          ),
                         ),
-                      )
-                    : Padding(
-                        padding: EdgeInsets.all(padding),
-                        child: Column(
-                          children: [
-                            Expanded(flex: 2, child: creditAvailable()),
-                            SizedBox(height: padding),
-                            Expanded(flex: 3, child: timeRemaining()),
-                            SizedBox(height: padding),
-                            Expanded(flex: 3, child: paymentMethod()),
-                          ],
-                        ),
-                      );
+                        SizedBox(width: padding),
+                        Expanded(flex: 1, child: timeRemaining()),
+                      ],
+                    ),
+                  );
+                } else {
+                  // MOBILE VIEW: Optimized for scrolling
+                  return SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: EdgeInsets.all(padding),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min, // Fixes vertical growth
+                      children: [
+                        // Give each card a fixed height so they don't try to be "infinite"
+                        SizedBox(height: 200, child: creditAvailable()),
+                        SizedBox(height: padding),
+                        // Increased height for timeRemaining to ensure button is visible
+                        SizedBox(height: 450, child: timeRemaining()),
+                        SizedBox(height: padding),
+                        SizedBox(height: 300, child: paymentMethod()),
+                        const SizedBox(height: 40),
+                      ],
+                    ),
+                  );
+                }
               },
             ),
-            // Idle screen overlay
             if (isIdle) idleScreen(),
           ],
         ),
@@ -632,67 +735,113 @@ class _HomePageState extends State<HomePage> {
 
   // Idle screen overlay
   Widget idleScreen() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.blue.shade900,
-            Colors.blue.shade700,
-            Colors.cyan.shade600,
-          ],
-        ),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.white.withOpacity(0.3),
-                    blurRadius: 20,
-                    spreadRadius: 5,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Responsive sizing for idle screen
+        final bool isSmallScreen = constraints.maxWidth < 400;
+        final bool isMediumScreen =
+            constraints.maxWidth >= 400 && constraints.maxWidth < 600;
+        final bool isLargeScreen = constraints.maxWidth >= 600;
+
+        final double iconSize = isSmallScreen
+            ? 60
+            : isMediumScreen
+            ? 70
+            : 80;
+        final double titleFontSize = isSmallScreen
+            ? 28
+            : isMediumScreen
+            ? 36
+            : 42;
+        final double subtitleFontSize = isSmallScreen
+            ? 16
+            : isMediumScreen
+            ? 18
+            : 20;
+        final double padding = isSmallScreen
+            ? 16
+            : isMediumScreen
+            ? 20
+            : 24;
+        final double spacing = isSmallScreen
+            ? 24
+            : isMediumScreen
+            ? 32
+            : 40;
+
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.blue.shade900,
+                Colors.blue.shade700,
+                Colors.cyan.shade600,
+              ],
+            ),
+          ),
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: padding * 2),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(padding),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.white.withOpacity(0.3),
+                          blurRadius: 20,
+                          spreadRadius: 5,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.touch_app,
+                      size: iconSize,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: spacing),
+                  Text(
+                    "Touch to Start",
+                    style: TextStyle(
+                      fontSize: titleFontSize,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 1.2,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: isSmallScreen ? 12 : 16),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: padding,
+                      vertical: isSmallScreen ? 6 : 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      "E-Bike Charging Station",
+                      style: TextStyle(
+                        fontSize: subtitleFontSize,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
                 ],
               ),
-              child: const Icon(Icons.touch_app, size: 80, color: Colors.white),
             ),
-            const SizedBox(height: 40),
-            const Text(
-              "Touch to Start",
-              style: TextStyle(
-                fontSize: 42,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                letterSpacing: 1.2,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                "E-Bike Charging Station",
-                style: TextStyle(
-                  fontSize: 20,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -703,13 +852,63 @@ class _HomePageState extends State<HomePage> {
   Widget timeRemaining() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double cardPadding = constraints.maxWidth > 400 ? 32 : 16;
-        final double iconSize = constraints.maxWidth > 400 ? 100 : 60;
-        final double timeSize = constraints.maxWidth > 400 ? 60 : 40;
-        final double labelSize = constraints.maxWidth > 400 ? 26 : 18;
-        final double buttonTextSize = constraints.maxWidth > 400 ? 22 : 18;
-        final double buttonPaddingH = constraints.maxWidth > 400 ? 40 : 24;
-        final double buttonPaddingV = constraints.maxWidth > 400 ? 20 : 12;
+        // More granular responsive breakpoints
+        final bool isSmallPhone = constraints.maxWidth < 400;
+        final bool isMediumPhone =
+            constraints.maxWidth >= 400 && constraints.maxWidth < 600;
+        final bool isLargePhone =
+            constraints.maxWidth >= 600 && constraints.maxWidth < 800;
+        final bool isTablet = constraints.maxWidth >= 800;
+
+        final double cardPadding = isTablet
+            ? 32
+            : isLargePhone
+            ? 24
+            : isMediumPhone
+            ? 20
+            : 16;
+        final double iconSize = isTablet
+            ? 100
+            : isLargePhone
+            ? 80
+            : isMediumPhone
+            ? 70
+            : 60;
+        final double timeSize = isTablet
+            ? 60
+            : isLargePhone
+            ? 50
+            : isMediumPhone
+            ? 45
+            : 40;
+        final double labelSize = isTablet
+            ? 26
+            : isLargePhone
+            ? 22
+            : isMediumPhone
+            ? 20
+            : 18;
+        final double buttonTextSize = isTablet
+            ? 22
+            : isLargePhone
+            ? 20
+            : isMediumPhone
+            ? 18
+            : 16;
+        final double buttonPaddingH = isTablet
+            ? 40
+            : isLargePhone
+            ? 32
+            : isMediumPhone
+            ? 28
+            : 24; // Reduced from 40 to 24 for small phones
+        final double buttonPaddingV = isTablet
+            ? 20
+            : isLargePhone
+            ? 16
+            : isMediumPhone
+            ? 14
+            : 20; // Increased from 16 to 20 for better touch targets on small phones
 
         return Card(
           elevation: 8,
@@ -718,7 +917,6 @@ class _HomePageState extends State<HomePage> {
           ),
           child: Container(
             width: double.infinity,
-            height: double.infinity,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -729,7 +927,7 @@ class _HomePageState extends State<HomePage> {
             ),
             padding: EdgeInsets.all(cardPadding),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.start,
               mainAxisSize: MainAxisSize.max,
               children: [
                 // Plug status indicator
@@ -885,6 +1083,10 @@ class _HomePageState extends State<HomePage> {
                             horizontal: buttonPaddingH,
                             vertical: buttonPaddingV,
                           ),
+                          minimumSize: const Size(
+                            48,
+                            48,
+                          ), // Minimum touch target size
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(30),
                           ),
@@ -899,7 +1101,7 @@ class _HomePageState extends State<HomePage> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              "Start Charging",
+                              isSmallPhone ? "Start" : "Start Charging",
                               style: TextStyle(
                                 fontSize: buttonTextSize,
                                 color: Colors.white,
@@ -924,17 +1126,35 @@ class _HomePageState extends State<HomePage> {
     final credits = Provider.of<CreditsController>(context).credits;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double cardPadding = constraints.maxWidth > 400 ? 32 : 16;
-        final double titleSize = constraints.maxWidth > 600
+        // More granular responsive breakpoints
+        final bool isSmallPhone = constraints.maxWidth < 400;
+        final bool isMediumPhone =
+            constraints.maxWidth >= 400 && constraints.maxWidth < 600;
+        final bool isLargePhone =
+            constraints.maxWidth >= 600 && constraints.maxWidth < 800;
+        final bool isTablet = constraints.maxWidth >= 800;
+
+        final double cardPadding = isTablet
+            ? 32
+            : isLargePhone
+            ? 24
+            : isMediumPhone
+            ? 20
+            : 16;
+        final double titleSize = isTablet
             ? 40
-            : constraints.maxWidth > 400
+            : isLargePhone
+            ? 32
+            : isMediumPhone
             ? 28
-            : 20;
-        final double creditSize = constraints.maxWidth > 600
-            ? 80
-            : constraints.maxWidth > 400
+            : 24;
+        final double creditSize = isTablet
+            ? 60
+            : isLargePhone
             ? 50
-            : 36;
+            : isMediumPhone
+            ? 45
+            : 40;
 
         return Card(
           elevation: 8,
@@ -1021,12 +1241,28 @@ class _HomePageState extends State<HomePage> {
   Widget paymentMethod() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double cardPadding = constraints.maxWidth > 400 ? 32 : 16;
-        final double titleSize = constraints.maxWidth > 600
+        // More granular responsive breakpoints
+        final bool isSmallPhone = constraints.maxWidth < 400;
+        final bool isMediumPhone =
+            constraints.maxWidth >= 400 && constraints.maxWidth < 600;
+        final bool isLargePhone =
+            constraints.maxWidth >= 600 && constraints.maxWidth < 800;
+        final bool isTablet = constraints.maxWidth >= 800;
+
+        final double cardPadding = isTablet
+            ? 32
+            : isLargePhone
+            ? 24
+            : isMediumPhone
+            ? 20
+            : 16;
+        final double titleSize = isTablet
             ? 40
-            : constraints.maxWidth > 400
+            : isLargePhone
+            ? 32
+            : isMediumPhone
             ? 28
-            : 20;
+            : 24;
 
         return Card(
           elevation: 8,
@@ -1077,8 +1313,10 @@ class _HomePageState extends State<HomePage> {
                   child: Center(
                     child: Wrap(
                       alignment: WrapAlignment.spaceEvenly,
-                      spacing: 16,
-                      runSpacing: 16,
+                      spacing:
+                          20, // Increased from 16 to 20 for better spacing on small screens
+                      runSpacing:
+                          20, // Increased from 16 to 20 for better vertical spacing
                       children: [
                         methodBox(
                           "Coins",
@@ -1116,21 +1354,33 @@ class _HomePageState extends State<HomePage> {
     double parentWidth,
     MaterialColor color,
   ) {
-    final double boxSize = parentWidth > 600
+    // More granular responsive breakpoints for payment method boxes
+    final bool isSmallPhone = parentWidth < 400;
+    final bool isMediumPhone = parentWidth >= 400 && parentWidth < 600;
+    final bool isLargePhone = parentWidth >= 600 && parentWidth < 800;
+    final bool isTablet = parentWidth >= 800;
+
+    final double boxSize = isTablet
         ? 100
-        : parentWidth > 400
-        ? 80
-        : 70;
-    final double fontSize = parentWidth > 600
+        : isLargePhone
+        ? 90
+        : isMediumPhone
+        ? 85
+        : 80; // Increased from 70 to 80 for better touch targets on small phones
+    final double fontSize = isTablet
         ? 18
-        : parentWidth > 400
+        : isLargePhone
         ? 16
-        : 14;
-    final double iconSize = parentWidth > 600
+        : isMediumPhone
+        ? 15
+        : 14; // Increased from 12 to 14 for better readability on small phones
+    final double iconSize = isTablet
         ? 48
-        : parentWidth > 400
-        ? 40
-        : 32;
+        : isLargePhone
+        ? 42
+        : isMediumPhone
+        ? 38
+        : 32; // Increased from 30 to 32 for better visibility on small phones
 
     return Column(
       children: [
