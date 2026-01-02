@@ -6,6 +6,7 @@ import 'package:my_app/pages/home.dart';
 import 'package:my_app/pages/diagnostics.dart';
 import 'package:my_app/controllers/credits_controller.dart';
 import 'package:my_app/controllers/bluetooth_controller.dart';
+import 'package:my_app/widgets/machine_guard.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -86,7 +87,11 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(fontFamily: 'Poppins'),
-      home: const HomePage(),
+      home: const MachineGuard(
+        machineId: 1,
+        apiUrl: 'https://sandybrown-crane-809489.hostingersite.com',
+        child: HomePage(),
+      ),
       routes: {'/diagnostics': (context) => const DiagnosticsPage()},
     );
   }

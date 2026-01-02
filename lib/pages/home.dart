@@ -161,6 +161,9 @@ class _HomePageState extends State<HomePage> {
       });
     }
 
+    // Send transaction data to API
+    sendTransactionData(credits, timeLeft.inMinutes);
+
     // Send start email if user provided email
     if (userEmail != null && userEmail!.isNotEmpty) {
       sendEmailNotification(userEmail!, 'start');
@@ -571,6 +574,56 @@ class _HomePageState extends State<HomePage> {
   bool isValidPhone(String phone) {
     // Accepts +639XXXXXXXXX or 09XXXXXXXXX
     return RegExp(r'^(\+639|09)\d{9}$').hasMatch(phone);
+  }
+
+  // Send transaction data to API
+  Future<void> sendTransactionData(double amount, int durationMinutes) async {
+    try {
+      print('💳 Attempting to send transaction data...');
+      print('   Machine_ID: 1');
+      print('   Amount: $amount');
+      print('   Duration: $durationMinutes minutes');
+      print(
+        '   URL: https://sandybrown-crane-809489.hostingersite.com/api/store-transaction',
+      );
+
+      final response = await http
+          .post(
+            Uri.parse(
+              'https://sandybrown-crane-809489.hostingersite.com/api/store-transaction',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: json.encode({
+              'Machine_ID': 1,
+              'Amount': amount,
+              'Duration': durationMinutes,
+            }),
+          )
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              print('❌ Transaction API request timed out after 10 seconds');
+              throw TimeoutException('Transaction API request timed out');
+            },
+          );
+
+      print('💳 Transaction API Response Status: ${response.statusCode}');
+      print('💳 Transaction API Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('✅ Transaction data sent successfully');
+      } else {
+        print('❌ Failed to send transaction: ${response.statusCode}');
+        print('   Response: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ Error sending transaction data: $e');
+      print('   Error type: ${e.runtimeType}');
+      // Don't show error to user - transaction logging is background feature
+    }
   }
 
   // Send email notification via API
