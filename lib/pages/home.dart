@@ -25,6 +25,7 @@ class _HomePageState extends State<HomePage> {
   bool isIdle = true; // Start in idle mode
   bool isWaitingForPlug = false; // Waiting for bike to be plugged back in
   int graceSecondsLeft = 0;
+  bool isFullyCharged = false; // Track if battery is fully charged
   String? userEmail; // Store user email for notifications
   String? userPhone; // Store user phone for SMS notifications
 
@@ -59,6 +60,7 @@ class _HomePageState extends State<HomePage> {
 
       bluetoothController.onPlugged = handlePlugged;
       bluetoothController.onUnplugged = handleUnplugged;
+      bluetoothController.onFullCharge = handleFullCharge;
     });
   }
 
@@ -126,6 +128,7 @@ class _HomePageState extends State<HomePage> {
       isWaitingForPlug = bluetoothController.isPlugged ? false : true;
     });
     creditsController.reset();
+    creditsController.setChargingActive(true);
 
     // Send START command to ESP32 to turn on relay
     bluetoothController.sendData('START');
@@ -215,12 +218,19 @@ class _HomePageState extends State<HomePage> {
       sendSmsNotification(userPhone!, 'done');
     }
 
+    final creditsController = Provider.of<CreditsController>(
+      context,
+      listen: false,
+    );
+    creditsController.setChargingActive(false);
+
     setState(() {
       isCharging = false;
       timeLeft = Duration.zero;
       isIdle = true; // Go to idle mode after charging finishes
       isWaitingForPlug = false;
       graceSecondsLeft = 0;
+      isFullyCharged = false;
       userEmail = null; // Clear email for next session
       userPhone = null; // Clear phone for next session
     });
@@ -353,11 +363,54 @@ class _HomePageState extends State<HomePage> {
       timeLeft = Duration.zero;
       graceSecondsLeft = 0;
       isIdle = true;
+      isFullyCharged = false;
     });
 
     creditsController.reset();
+    creditsController.setChargingActive(false);
 
     showMessage("Session terminated - E-Bike not reconnected in time.");
+  }
+
+  // Handle full charge event from BluetoothController
+  void handleFullCharge() {
+    if (!isCharging) return;
+
+    final bluetoothController = Provider.of<BluetoothController>(
+      context,
+      listen: false,
+    );
+    final creditsController = Provider.of<CreditsController>(
+      context,
+      listen: false,
+    );
+
+    // Stop charging and notify user
+    timer?.cancel();
+    bluetoothController.sendData('STOP');
+    bluetoothController.addLog('🔋 Battery fully charged! Charging stopped.');
+
+    creditsController.setChargingActive(false);
+
+    setState(() {
+      isCharging = false;
+      isFullyCharged = true;
+      timeLeft = Duration.zero;
+      isIdle = true;
+      isWaitingForPlug = false;
+      graceSecondsLeft = 0;
+    });
+
+    showMessage("Battery fully charged! Please unplug the charger.");
+
+    // Send full charge email if user provided email
+    if (userEmail != null && userEmail!.isNotEmpty) {
+      sendEmailNotification(userEmail!, 'full');
+    }
+    // Send full charge SMS if user provided phone
+    if (userPhone != null && userPhone!.isNotEmpty) {
+      sendSmsNotification(userPhone!, 'full');
+    }
   }
 
   void showUnpluggedWarning() {
@@ -693,6 +746,8 @@ class _HomePageState extends State<HomePage> {
         msg = 'Charging finished! Please unplug the battery.';
       } else if (status == 'terminated') {
         msg = 'Session terminated - E-Bike not reconnected in time.';
+      } else if (status == 'full') {
+        msg = 'Battery fully charged! Please unplug the charger.';
       } else {
         msg = 'Charging status: $status';
       }

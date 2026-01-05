@@ -30,6 +30,7 @@ class BluetoothController extends ChangeNotifier {
   Function(String)? onDataReceived;
   Function()? onPlugged;
   Function()? onUnplugged;
+  Function()? onFullCharge;
 
   void addLog(String log) {
     _logs.add(log);
@@ -197,6 +198,10 @@ class BluetoothController extends ChangeNotifier {
                   addLog('⚠️ Charger UNPLUGGED');
                   notifyListeners();
                   onUnplugged?.call();
+                } else if (up == 'FULL_CHARGE') {
+                  addLog('🏁 Battery FULL CHARGE detected');
+                  notifyListeners();
+                  onFullCharge?.call();
                 } else {
                   // Handle other messages (COIN, BILL, RELAY events, etc.)
                   onDataReceived?.call(msg);
