@@ -48,6 +48,19 @@ class _HomePageState extends State<HomePage> {
     timer?.cancel();
     idleTimer?.cancel();
     graceTimer?.cancel();
+
+    // Turn off relay if it's on when widget is disposed
+    if (isCharging) {
+      final bluetoothController = Provider.of<BluetoothController>(
+        context,
+        listen: false,
+      );
+      bluetoothController.sendData('STOP');
+      bluetoothController.addLog(
+        'Widget disposed - sent STOP command to turn off relay',
+      );
+    }
+
     super.dispose();
   }
 
@@ -722,6 +735,417 @@ class _HomePageState extends State<HomePage> {
       print('   Error type: ${e.runtimeType}');
       // Don't show error to user - email is optional feature
     }
+  }
+
+  // Show denomination selection dialog first
+  void showDenominationDialog() {
+    // Don't allow QR payment while timer is running
+    if (isCharging) {
+      showMessage('Cannot add credits while charging is active');
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade100,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.payments,
+                            color: Colors.green.shade700,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Select Amount',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Choose your payment amount:',
+                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+                const SizedBox(height: 24),
+                // Grid of denomination buttons
+                GridView.count(
+                  shrinkWrap: true,
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 16,
+                  crossAxisSpacing: 16,
+                  childAspectRatio: 2,
+                  children: [
+                    _buildDenominationButton(5),
+                    _buildDenominationButton(10),
+                    _buildDenominationButton(20),
+                    _buildDenominationButton(50),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Build denomination button
+  Widget _buildDenominationButton(int amount) {
+    return ElevatedButton(
+      onPressed: () {
+        Navigator.of(context).pop(); // Close denomination dialog
+        showQRCodeDialog(amount); // Show QR code with selected amount
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.green.shade50,
+        foregroundColor: Colors.green.shade900,
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.green.shade300, width: 2),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '₱$amount',
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+          ),
+          Text(
+            '${(amount / ratePeso * rateMinutes).toInt()} minutes',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Show simulated QR code dialog for payment
+  void showQRCodeDialog(int amount) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade100,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.qr_code_2,
+                            color: Colors.blue.shade700,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Scan QR Code',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.shade200, width: 2),
+                  ),
+                  child: Column(
+                    children: [
+                      // Simulated QR Code (using a grid pattern)
+                      Container(
+                        width: 200,
+                        height: 200,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.black, width: 4),
+                        ),
+                        child: GridView.builder(
+                          padding: const EdgeInsets.all(8),
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 10,
+                                crossAxisSpacing: 2,
+                                mainAxisSpacing: 2,
+                              ),
+                          itemCount: 100,
+                          itemBuilder: (context, index) {
+                            // Create a pseudo-random pattern for QR code simulation
+                            final pattern = [
+                              1,
+                              1,
+                              1,
+                              1,
+                              1,
+                              0,
+                              1,
+                              0,
+                              1,
+                              1,
+                              1,
+                              0,
+                              0,
+                              0,
+                              1,
+                              0,
+                              1,
+                              1,
+                              0,
+                              1,
+                              1,
+                              0,
+                              1,
+                              0,
+                              1,
+                              0,
+                              0,
+                              1,
+                              1,
+                              1,
+                              1,
+                              0,
+                              1,
+                              0,
+                              1,
+                              0,
+                              1,
+                              0,
+                              0,
+                              1,
+                              1,
+                              1,
+                              1,
+                              1,
+                              1,
+                              0,
+                              0,
+                              1,
+                              1,
+                              1,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              1,
+                              0,
+                              1,
+                              0,
+                              1,
+                              0,
+                              1,
+                              1,
+                              0,
+                              1,
+                              1,
+                              1,
+                              0,
+                              1,
+                              0,
+                              1,
+                              0,
+                              1,
+                              0,
+                              0,
+                              1,
+                              0,
+                              1,
+                              0,
+                              1,
+                              1,
+                              0,
+                              1,
+                              1,
+                              1,
+                              0,
+                              1,
+                              0,
+                              1,
+                              1,
+                              0,
+                              1,
+                              0,
+                              1,
+                              0,
+                              1,
+                              1,
+                              1,
+                              1,
+                            ];
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: pattern[index] == 1
+                                    ? Colors.black
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(1),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'E-Bike Charging Payment',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '₱$amount',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                      Text(
+                        '${(amount / ratePeso * rateMinutes).toInt()} minutes charging',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Demo Mode',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: Colors.amber.shade700,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'This is a simulated QR code for demonstration purposes.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Confirm button to add credits
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      // Add credits to user account
+                      final creditsController = Provider.of<CreditsController>(
+                        context,
+                        listen: false,
+                      );
+                      creditsController.addCredits(amount.toDouble());
+
+                      Navigator.of(context).pop();
+                      showMessage('₱$amount added to your credits!');
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 2,
+                    ),
+                    child: const Text(
+                      'Confirm Payment',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   // Send SMS notification via flutter_sms package
@@ -1431,18 +1855,24 @@ class _HomePageState extends State<HomePage> {
                           Icons.monetization_on,
                           constraints.maxWidth,
                           Colors.amber,
+                          null,
                         ),
                         methodBox(
                           "Bills",
                           Icons.attach_money,
                           constraints.maxWidth,
                           Colors.green,
+                          null,
                         ),
-                        methodBox(
-                          "QR Code",
-                          Icons.qr_code_scanner,
-                          constraints.maxWidth,
-                          Colors.blue,
+                        Opacity(
+                          opacity: isCharging ? 0.5 : 1.0,
+                          child: methodBox(
+                            "QR Code",
+                            Icons.qr_code_scanner,
+                            constraints.maxWidth,
+                            Colors.blue,
+                            isCharging ? null : showDenominationDialog,
+                          ),
                         ),
                       ],
                     ),
@@ -1461,6 +1891,7 @@ class _HomePageState extends State<HomePage> {
     IconData icon,
     double parentWidth,
     MaterialColor color,
+    VoidCallback? onTap,
   ) {
     // More granular responsive breakpoints for payment method boxes
     final bool isSmallPhone = parentWidth < 400;
@@ -1490,7 +1921,7 @@ class _HomePageState extends State<HomePage> {
         ? 38
         : 32; // Increased from 30 to 32 for better visibility on small phones
 
-    return Column(
+    Widget content = Column(
       children: [
         Container(
           width: boxSize,
@@ -1525,6 +1956,17 @@ class _HomePageState extends State<HomePage> {
         ),
       ],
     );
+
+    // Wrap with InkWell if onTap is provided
+    if (onTap != null) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: content,
+      );
+    }
+
+    return content;
   }
 
   AppBar buildAppbar() {
