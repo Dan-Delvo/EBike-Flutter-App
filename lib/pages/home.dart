@@ -164,6 +164,20 @@ class _HomePageState extends State<HomePage> {
       );
       showUnpluggedWarning();
 
+      // Send grace period email if user provided email
+      if (userEmail != null && userEmail!.isNotEmpty) {
+        sendEmailNotification(userEmail!, 'grace_started');
+      }
+      // Send grace period SMS if user provided phone
+      if (userPhone != null && userPhone!.isNotEmpty) {
+        sendSmsNotification(
+          userPhone!,
+          'grace_started',
+          credits,
+          timeLeft.inMinutes,
+        );
+      }
+
       graceTimer?.cancel();
       graceTimer = Timer.periodic(const Duration(seconds: 1), (_) {
         setState(() {
@@ -186,7 +200,7 @@ class _HomePageState extends State<HomePage> {
     }
     // Send start SMS if user provided phone
     if (userPhone != null && userPhone!.isNotEmpty) {
-      sendSmsNotification(userPhone!, 'start');
+      sendSmsNotification(userPhone!, 'start', credits, timeLeft.inMinutes);
     }
 
     // Start main timer (counts down purchased time) ONLY if the bike is plugged.
@@ -228,7 +242,7 @@ class _HomePageState extends State<HomePage> {
     }
     // Send completion SMS if user provided phone
     if (userPhone != null && userPhone!.isNotEmpty) {
-      sendSmsNotification(userPhone!, 'done');
+      sendSmsNotification(userPhone!, 'done', 0, 0);
     }
 
     final creditsController = Provider.of<CreditsController>(
@@ -272,6 +286,15 @@ class _HomePageState extends State<HomePage> {
     // Show warning dialog
     showUnpluggedWarning();
 
+    // Send grace period email if user provided email
+    if (userEmail != null && userEmail!.isNotEmpty) {
+      sendEmailNotification(userEmail!, 'grace_started');
+    }
+    // Send grace period SMS if user provided phone
+    if (userPhone != null && userPhone!.isNotEmpty) {
+      sendSmsNotification(userPhone!, 'grace_started', 0, timeLeft.inMinutes);
+    }
+
     // Start grace period countdown
     graceTimer?.cancel();
     graceTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -282,14 +305,6 @@ class _HomePageState extends State<HomePage> {
       if (graceSecondsLeft <= 0) {
         // Time's up - terminate charging session
         graceTimer?.cancel();
-        // Send termination email if user provided email
-        if (userEmail != null && userEmail!.isNotEmpty) {
-          sendEmailNotification(userEmail!, 'terminated');
-        }
-        // Send termination SMS if user provided phone
-        if (userPhone != null && userPhone!.isNotEmpty) {
-          sendSmsNotification(userPhone!, 'terminated');
-        }
         forceStopCharging();
       }
     });
@@ -361,7 +376,7 @@ class _HomePageState extends State<HomePage> {
     }
     // Send termination SMS
     if (userPhone != null && userPhone!.isNotEmpty) {
-      sendSmsNotification(userPhone!, 'terminated');
+      sendSmsNotification(userPhone!, 'terminated', 0, timeLeft.inMinutes);
     }
 
     // Close warning dialog if open
@@ -422,7 +437,7 @@ class _HomePageState extends State<HomePage> {
     }
     // Send full charge SMS if user provided phone
     if (userPhone != null && userPhone!.isNotEmpty) {
-      sendSmsNotification(userPhone!, 'full');
+      sendSmsNotification(userPhone!, 'full', 0, 0);
     }
   }
 
@@ -454,14 +469,14 @@ class _HomePageState extends State<HomePage> {
                     size: 30,
                   ),
                   const SizedBox(width: 10),
-                  const Text('E-Bike Unplugged!'),
+                  const Text('E-Bike Unplugged/Fully Charged!'),
                 ],
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
-                    'Please plug the E-Bike back in.',
+                    'Please plug the E-Bike back in or check if E-Bike is fully charged.',
                     style: TextStyle(fontSize: 16),
                   ),
                   const SizedBox(height: 20),
@@ -1149,7 +1164,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   // Send SMS notification via flutter_sms package
-  Future<void> sendSmsNotification(String phone, String status) async {
+  Future<void> sendSmsNotification(
+    String phone,
+    String status, [
+    double amount = 0,
+    int durationMinutes = 0,
+  ]) async {
     try {
       print('📱 Attempting to send SMS notification...');
       print('   Phone: $phone');
@@ -1162,18 +1182,68 @@ class _HomePageState extends State<HomePage> {
         return;
       }
 
-      // Compose message based on status
+      // Get current timestamp
+      final now = DateTime.now();
+      final timeStr =
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      final dateStr = '${now.month}/${now.day}/${now.year}';
+
+      // Compose detailed message based on status
       String msg;
       if (status == 'start') {
-        msg = 'Charging started.';
+        msg =
+            '🔌 E-Bike Charging Started\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '⏰ Time: $timeStr\n'
+            '📅 Date: $dateStr\n'
+            '💰 Amount: ₱${amount.toStringAsFixed(2)}\n'
+            '⏱️ Duration: $durationMinutes minutes\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            'Your E-Bike is now charging. You will be notified when complete.';
       } else if (status == 'done') {
-        msg = 'Charging finished! Please unplug the battery.';
+        msg =
+            '✅ Charging Complete!\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '⏰ Completed at: $timeStr\n'
+            '📅 Date: $dateStr\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '⚠️ Please unplug the battery now to avoid overcharging.';
       } else if (status == 'terminated') {
-        msg = 'Session terminated - E-Bike not reconnected in time.';
+        msg =
+            '❌ Session Terminated\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '⏰ Time: $timeStr\n'
+            '📅 Date: $dateStr\n'
+            '⏱️ Time Remaining: $durationMinutes min\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '⚠️ E-Bike was not reconnected within the grace period. Session has ended.';
       } else if (status == 'full') {
-        msg = 'Battery fully charged! Please unplug the charger.';
+        msg =
+            '🔋 Battery Fully Charged!\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '⏰ Time: $timeStr\n'
+            '📅 Date: $dateStr\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '✅ Your battery is at 100%. Please unplug the charger immediately.';
+      } else if (status == 'grace_started') {
+        msg =
+            '⚠️ URGENT WARNING\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '⏰ Time: $timeStr\n'
+            '📅 Date: $dateStr\n'
+            '⏱️ Time Left: $durationMinutes min\n'
+            '⏳ Grace Period: 60 seconds\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '🔌 E-Bike unplugged! Please reconnect within 60 seconds or your session will be terminated and remaining time will be lost.\n\n'
+            '🔋 OR if E-Bike is fully charged, check the battery percentage before unplugging.';
       } else {
-        msg = 'Charging status: $status';
+        msg =
+            '📱 E-Bike Charging Update\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '⏰ Time: $timeStr\n'
+            '📅 Date: $dateStr\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            'Status: $status';
       }
       print('   Message: $msg');
       // Send SMS: on Android attempt direct send, on iOS opens Messages (direct send not allowed)
