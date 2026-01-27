@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:flutter_sms/flutter_sms.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io' show Platform;
+import 'package:video_player/video_player.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -28,6 +29,8 @@ class _HomePageState extends State<HomePage> {
   bool isFullyCharged = false; // Track if battery is fully charged
   String? userEmail; // Store user email for notifications
   String? userPhone; // Store user phone for SMS notifications
+  late VideoPlayerController _videoController; // Video player controller
+  bool _isVideoInitialized = false; // Track video initialization status
 
   static const double ratePeso = 5; // 5 pesos
   static const int rateMinutes = 10; // = 10 minutes
@@ -41,6 +44,49 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     startIdleTimer();
     setupBluetoothCallbacks();
+    _initializeVideo();
+  }
+
+  // Initialize video player
+  void _initializeVideo() async {
+    try {
+      _videoController = VideoPlayerController.asset(
+        'assets/videos/Wattryn.mp4',
+      );
+
+      // Add listener to rebuild UI when video state changes
+      _videoController.addListener(() {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+
+      await _videoController.initialize();
+
+      if (mounted) {
+        setState(() {
+          _isVideoInitialized = true;
+        });
+
+        _videoController.setLooping(true);
+        _videoController.setVolume(0.0); // Mute the video
+
+        // Start playing immediately since we start in idle mode
+        await _videoController.play();
+
+        print(
+          '✅ Video initialized and playing: ${_videoController.value.isPlaying}',
+        );
+        print('Video size: ${_videoController.value.size}');
+      }
+    } catch (e) {
+      print('❌ Error initializing video: $e');
+      if (mounted) {
+        setState(() {
+          _isVideoInitialized = false;
+        });
+      }
+    }
   }
 
   @override
@@ -48,6 +94,7 @@ class _HomePageState extends State<HomePage> {
     timer?.cancel();
     idleTimer?.cancel();
     graceTimer?.cancel();
+    _videoController.dispose();
 
     // Turn off relay if it's on when widget is disposed
     if (isCharging) {
@@ -85,6 +132,14 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           isIdle = true;
         });
+        if (_isVideoInitialized) {
+          if (!_videoController.value.isPlaying) {
+            _videoController.play();
+            print('🎥 Starting video playback in idle mode');
+          }
+        } else {
+          print('⚠️ Video not initialized yet');
+        }
       }
     });
   }
@@ -94,6 +149,9 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       isIdle = false;
     });
+    if (_isVideoInitialized && _videoController.value.isPlaying) {
+      _videoController.pause();
+    }
     startIdleTimer();
   }
 
@@ -102,6 +160,10 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       isIdle = false;
     });
+    if (_isVideoInitialized && _videoController.value.isPlaying) {
+      _videoController.pause();
+      print('⏸️ Pausing video - exiting idle mode');
+    }
     startIdleTimer();
   }
 
@@ -1371,77 +1433,174 @@ class _HomePageState extends State<HomePage> {
             ? 32
             : 40;
 
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.blue.shade900,
-                Colors.blue.shade700,
-                Colors.cyan.shade600,
-              ],
-            ),
-          ),
-          child: Center(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: padding * 2),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(padding),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.white.withOpacity(0.3),
-                          blurRadius: 20,
-                          spreadRadius: 5,
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      Icons.touch_app,
-                      size: iconSize,
-                      color: Colors.white,
-                    ),
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // Video background
+            if (_isVideoInitialized && _videoController.value.isInitialized)
+              SizedBox.expand(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _videoController.value.size.width,
+                    height: _videoController.value.size.height,
+                    child: VideoPlayer(_videoController),
                   ),
-                  SizedBox(height: spacing),
-                  Text(
-                    "Touch to Start",
-                    style: TextStyle(
-                      fontSize: titleFontSize,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: 1.2,
-                    ),
-                    textAlign: TextAlign.center,
+                ),
+              )
+            else
+              // Fallback gradient while video loads
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.blue.shade900,
+                      Colors.blue.shade700,
+                      Colors.cyan.shade600,
+                    ],
                   ),
-                  SizedBox(height: isSmallScreen ? 12 : 16),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: padding,
-                      vertical: isSmallScreen ? 6 : 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      "E-Bike Charging Station",
-                      style: TextStyle(
-                        fontSize: subtitleFontSize,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: Colors.white),
+                      SizedBox(height: 16),
+                      Text(
+                        'Loading video...',
+                        style: TextStyle(color: Colors.white, fontSize: 16),
                       ),
-                    ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Initialized: $_isVideoInitialized',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
                   ),
-                ],
+                ),
+              ),
+
+            // Dark overlay for better text visibility
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.3),
+                    Colors.black.withOpacity(0.5),
+                    Colors.black.withOpacity(0.7),
+                  ],
+                ),
               ),
             ),
-          ),
+
+            // Content on top of video
+            Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: padding * 2),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Animated icon container
+                    Container(
+                      padding: EdgeInsets.all(padding * 1.5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.4),
+                          width: 2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.3),
+                            blurRadius: 30,
+                            spreadRadius: 5,
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        Icons.touch_app,
+                        size: iconSize,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(height: spacing),
+                    // Title text with shadow
+                    Text(
+                      "Touch to Start",
+                      style: TextStyle(
+                        fontSize: titleFontSize,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 2,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withOpacity(0.8),
+                            blurRadius: 15,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: spacing * 0.5),
+                    // Subtitle badge
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: padding * 1.5,
+                        vertical: padding * 0.6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(25),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.3),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.electric_bike,
+                            color: Colors.white,
+                            size: subtitleFontSize * 1.2,
+                          ),
+                          SizedBox(width: padding * 0.5),
+                          Text(
+                            "E-Bike Charging Station",
+                            style: TextStyle(
+                              fontSize: subtitleFontSize,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black.withOpacity(0.5),
+                                  blurRadius: 8,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
@@ -2066,7 +2225,7 @@ class _HomePageState extends State<HomePage> {
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Text(
-                        'E-Bike Charging Station v12',
+                        'E-Bike Charging Station v17',
                         style: TextStyle(
                           fontSize: fontSize,
                           fontWeight: FontWeight.bold,

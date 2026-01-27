@@ -40,6 +40,7 @@ dependencies:
   http: ^1.1.0
   permission_handler: ^11.3.1
   flutter_sms: ^2.3.3
+  video_player: ^2.8.2
 
 dev_dependencies:
   flutter_test:
@@ -90,45 +91,46 @@ flutter:
   # list giving the asset and other descriptors for the font. For
   # example:
 
-assets:
-  - assets/icon/applogo.png
+  assets:
+    - assets/icon/applogo.png
+    - assets/videos/
 
-fonts:
-  - family: Poppins
-    fonts:
-      - asset: fonts/Poppins-ExtraLight.ttf
-        weight: 200
-      - asset: fonts/Poppins-ExtraLightItalic.ttf
-        weight: 200
-        style: italic
-      - asset: fonts/Poppins-Light.ttf
-        weight: 300
-      - asset: fonts/Poppins-LightItalic.ttf
-        weight: 300
-        style: italic
-      - asset: fonts/Poppins-Medium.ttf
-        weight: 500
-      - asset: fonts/Poppins-MediumItalic.ttf
-        weight: 500
-        style: italic
-      - asset: fonts/Poppins-Italic.ttf
-        weight: 400
-        style: italic
-      - asset: fonts/Poppins-Bold.ttf
-        weight: 700
-      - asset: fonts/Poppins-BoldItalic.ttf
-        weight: 700
-        style: italic
-      - asset: fonts/Poppins-ExtraBold.ttf
-        weight: 800
-      - asset: fonts/Poppins-ExtraBoldItalic.ttf
-        weight: 800
-        style: italic
-      - asset: fonts/Poppins-Black.ttf
-        weight: 900
-      - asset: fonts/Poppins-BlackItalic.ttf
-        weight: 900
-        style: italic
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: fonts/Poppins-ExtraLight.ttf
+          weight: 200
+        - asset: fonts/Poppins-ExtraLightItalic.ttf
+          weight: 200
+          style: italic
+        - asset: fonts/Poppins-Light.ttf
+          weight: 300
+        - asset: fonts/Poppins-LightItalic.ttf
+          weight: 300
+          style: italic
+        - asset: fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: fonts/Poppins-MediumItalic.ttf
+          weight: 500
+          style: italic
+        - asset: fonts/Poppins-Italic.ttf
+          weight: 400
+          style: italic
+        - asset: fonts/Poppins-Bold.ttf
+          weight: 700
+        - asset: fonts/Poppins-BoldItalic.ttf
+          weight: 700
+          style: italic
+        - asset: fonts/Poppins-ExtraBold.ttf
+          weight: 800
+        - asset: fonts/Poppins-ExtraBoldItalic.ttf
+          weight: 800
+          style: italic
+        - asset: fonts/Poppins-Black.ttf
+          weight: 900
+        - asset: fonts/Poppins-BlackItalic.ttf
+          weight: 900
+          style: italic
 
   #   - family: Trajan Pro
   #     fonts:
